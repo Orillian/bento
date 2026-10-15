@@ -92,8 +92,10 @@ export interface RestoreRules {
    *  app's recovery snapshot is whole — `putRecovery` stores `contentOnly(doc)`,
    *  the full document minus capability — so on 'recover' an absent CONTENT (or
    *  unknown) field means the user DELETED it before the crash, and it stays
-   *  removed. Set FALSE only when `incoming` legitimately omits fields it still
-   *  has (a projection), so an absent field keeps the live value. A HISTORY field
+   *  removed. A PROJECTION snapshot — one that legitimately omits fields it still
+   *  has — MUST pass FALSE: forget it and those fields are REMOVED, so its failure
+   *  is data loss, not exposure. Under FALSE an absent field keeps the live
+   *  value. A HISTORY field
    *  keeps live when absent either way, and the identity/mode/capability floor is
    *  unchanged. Only 'recover' is affected — 'back' already drops an absent
    *  field. (maintainer ruling 2026-10-15: whole is the default.) */
