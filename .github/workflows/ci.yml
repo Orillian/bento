@@ -233,6 +233,23 @@ jobs:
             --outfile="$RUNNER_TEMP/test-spaces-restore-gate.mjs"
           node "$RUNNER_TEMP/test-spaces-restore-gate.mjs"
 
+      - name: Spaces restore directions rig (several timezones)
+        # Every whole-document restore resolves through the kernel's
+        # applyRestore over one rule set (spaces/src/store.ts RESTORE_RULES):
+        # undo/redo, version restore, Replace from JSON and loadDoc go 'back'
+        # (history kept live), the recovery banner goes 'recover' (revisions
+        # follow the snapshot, the trail unions by day without counting a day
+        # twice). Undo keeps the asset pool its checkpoints omit. The trail
+        # hook does day arithmetic on labels, hence the timezone loop.
+        # (Bundled: store.ts imports './model' extensionless.)
+        run: |
+          slides/node_modules/.bin/esbuild scripts/test-spaces-restore.ts --bundle --platform=node --format=esm \
+            --outfile="$RUNNER_TEMP/test-spaces-restore.mjs"
+          for tz in UTC Europe/Berlin Pacific/Kiritimati Pacific/Niue; do
+            echo "--- $tz"
+            TZ=$tz node "$RUNNER_TEMP/test-spaces-restore.mjs"
+          done
+
       - name: Spaces in-file history rig
         # doc.revisions (spaces/src/history.ts): every entry is the kernel's
         # Revision envelope with the patch under body; what it covers is the

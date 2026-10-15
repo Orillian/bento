@@ -10346,3 +10346,48 @@ Mutations, all red by exit code:
 
 Naming a content key, an identity key, or a misspelled key in `syncHistory`
 fails tsc.
+
+## 2026-10-15 — bento/spaces restores by direction, and a recovery unions the trail by day
+
+Every whole-document restore in bento/spaces now resolves through the kernel's
+`applyRestore` (`kernel/src/docfields.ts`) over one rule set,
+`spaces/src/store.ts` `RESTORE_RULES` = the field-class map plus one recover
+hook, on `trail`. The hand-rolled keep-live in `store.ts` and
+`restoregate.ts` is gone. Each entry point names its direction:
+
+- **'back'** — undo, redo, a version restore from either timeline, Replace
+  from JSON and `bento.loadDoc`. Content follows. Identity, modes, capability
+  and history keep the live value, so a paste or a version can neither delete
+  this space's history nor install one.
+- **'recover'** — the crash-recovery banner only. `revisions` binds no hook:
+  it follows the snapshot when the snapshot has it, and is kept when it does
+  not. `trail` goes through `trail.ts` `trailRecover`.
+
+`trailRecover` keeps a day found on one side only. A day on both sides goes
+to the side whose whole document is later: the snapshot's `at` against the
+live `modified`, both in epoch ms. A tie keeps live. A live file with no
+`modified` counts as older. Next, so no day is counted twice, rows are walked
+newest first within each series, and a row whose day falls inside the span
+of a row already kept is dropped. That covers a weekly or monthly bucket
+against single days, and two buckets that overlap. Days are compared as
+labels with `dayIndex`, and only within one series. The result then goes
+through `pruneTrail`. Live's key order is kept, so a snapshot that adds
+nothing raises no banner.
+
+**Undo keeps the asset pool live.** Undo checkpoints omit `assets` for size.
+On 'back', `applyRestore` treats an absent content field as dropped, so a
+checkpoint applied as-is would empty the pool. The undo path alone overrides
+`assets` to 'live' (`UNDO_RULES`). That is what undo did before. A version
+restore and a paste carry their own pool, so there it follows.
+
+One known gap, which comes from the kernel and is pinned in
+`scripts/test-spaces-restore-gate.ts`. On 'recover', a content field missing
+from the snapshot keeps the live value. So a design, or footnotes, removed
+after the last save are not removed by a recovery.
+
+Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
+- recovery passed as 'back';
+- Replace from JSON passed as 'recover';
+- the hook returning the snapshot's trail wholesale;
+- the span drop removed;
+- the undo assets override removed.

@@ -23,7 +23,7 @@ import { APP_VERSION, applyUpdateInPlace } from '../../kernel/src/update.ts'
 import { t, locale, applyDirection } from './i18n'
 import { i18nApi } from '../../kernel/src/i18n.ts'
 import { parseDoc, uid, newPage, type SpacesDoc, type ParseResult } from './model'
-import { recoveryOffered, restoreInto } from './restoregate'
+import { recoveryOffered, recoverInto, replaceFromJson } from './restoregate'
 import { recordTrail } from './observe.ts'
 import { protectedDays } from './periods.ts'
 import {
@@ -649,9 +649,8 @@ function boot(doc: SpacesDoc, repaired: string[], frozen?: 'policy' | 'version')
     },
     loadDoc: (json: string): boolean => {
       if (store.readOnly) return false
-      const r = parseDoc(json)
-      if (!r.ok) return false
-      store.replaceDoc(r.doc)
+      // Replace from JSON's own path ('back': content, never identity or history)
+      if (!replaceFromJson(store, json)) return false
       editor.repaint()
       return true
     },
@@ -722,12 +721,14 @@ function banner(text: string, actions: Array<[string, () => void]> = []): void {
 async function offerRecovery(doc: SpacesDoc, store: Store, editor: Editor): Promise<void> {
   if (store.readOnly) return // a reading copy, a view-only follower or a frozen file is never rewritten
   const snap = await getRecovery(doc.docId)
-  if (!snap || !recoveryOffered(snap.json, doc)) return
+  if (!snap || !recoveryOffered(snap.json, doc, snap.at)) return
   banner(t('Unsaved changes from a previous session were found.'), [
     [t('Restore'), () => {
-      // re-gated against the space as it is NOW (restoreInto). A refusal
+      // re-gated against the space as it is NOW (recoverInto). A refusal
       // applies nothing and keeps the entry; only Discard deletes it.
-      if (!restoreInto(store, snap.json)) { editor.status(t('That version could not be read')); return }
+      // 'recover': the snapshot is a newer copy of this space, so its history
+      // is reconciled (trail unioned by day) rather than kept from the file.
+      if (!recoverInto(store, snap)) { editor.status(t('That version could not be read')); return }
       editor.repaint()
     }],
     [t('Discard'), () => { void clearRecovery(doc.docId) }],

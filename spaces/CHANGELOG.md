@@ -1341,6 +1341,13 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   sync engine which document fields are content, so a collaborator's copy only
   ever sends those. A field written by a newer version of Bento is kept in your
   file when it arrives, but never passed on to the rest of the room.
+- **Restoring after a crash keeps the progress record from both copies.**
+  When the "Unsaved changes from a previous session" banner restores, every
+  day recorded in either the file or the recovered copy is kept. If both have
+  the same day, the newer copy's reading wins. A day is never counted twice
+  when one copy has thinned older days into weekly or monthly rows. Version
+  history comes back with the recovered copy. Undo, restoring a version and
+  pasting document JSON still leave both records exactly as they are.
 
 ## [0.1.0] — 2026-08-03
 

@@ -1,0 +1,395 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Bento authors
+// Every whole-document restore in bento/spaces, by DIRECTION.
+//
+//   node scripts/test-spaces.mjs restore
+//
+// (Bundled: store.ts imports './model' extensionless — the runner does what CI
+// does. Run from the repo root; the last section reads main.ts and doccmds.ts.)
+//
+// WHAT THIS PROVES. Spaces restores a whole document from six places, and all
+// of them now resolve field-by-field through ONE kernel call
+// (kernel/src/docfields.ts applyRestore) over ONE rule set (store.ts
+// RESTORE_RULES). What differs is the DIRECTION each passes:
+//
+//   'back'    undo, redo, a version restore (this browser's timeline and the
+//             one inside the file), Replace from JSON, bento.loadDoc;
+//   'recover' the crash-recovery banner.
+//
+// Each section drives the REAL entry point (Store.undo/redo, restoreVersion,
+// replaceFromJson, recoverInto) and checks the three things a direction
+// decides: identity/mode/capability (always live), history (live on 'back';
+// on 'recover', revisions follow the snapshot when it has them and the trail
+// unions by day through trail.ts trailRecover), and content (follows).
+//
+// THE ASSETS TRAP. Undo checkpoints omit `assets` for size, and applyRestore on
+// 'back' reads an absent content field as dropped. store.ts keeps the pool live
+// on the undo path only (UNDO_RULES); section 4 is what goes red without it.
+
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { Store, RESTORE_RULES, restoreAt } from '../spaces/src/store.ts'
+import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
+import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
+import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
+import { recordRevision, restoredDoc, revisionsOf } from '../spaces/src/history.ts'
+
+let checks = 0
+let failures = 0
+function ok(cond: boolean, msg: string) {
+  checks++
+  if (!cond) { failures++; console.log(`  FAIL  ${msg}`) }
+  else console.log(`  ok    ${msg}`)
+}
+const J = (v: unknown) => JSON.stringify(v)
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
+type Obj = Record<string, any>
+
+const LIVE_COLLAB = { v: 2, room: 'wLIVE', key: 'live-key', on: true }
+const PHOTO = 'data:image/png;base64,' + 'iVBORw0KGgo'.repeat(40)
+const LIVE_MODIFIED = '2026-09-15T12:00:00.000Z'
+const LIVE_MS = Date.parse(LIVE_MODIFIED)
+const HOUR = 3600_000
+
+const row = (todo: number, extra: Partial<TrailRow> = {}): TrailRow => ({ n: { todo }, ...extra })
+
+function mk(over: Obj = {}): SpacesDoc {
+  const r = parseDoc(J({
+    format: FORMAT, version: 1, docId: 'space-R', title: 'R', home: 'p1', modified: LIVE_MODIFIED,
+    theme: { background: '#fff', color: '#1E2A3A', accent: '#F7A600', measure: 720 },
+    pages: [
+      { id: 'p1', title: 'One', blocks: [{ id: 'b1', type: 'p', html: 'live text' }] },
+      { id: 'p2', title: 'Two', parent: 'p1', blocks: [{ id: 'b2', type: 'p', html: 'two' }] },
+    ],
+    assets: { photo: PHOTO },
+    collab: LIVE_COLLAB,
+    trail: { '2026-09-10': row(5), '2026-09-11': row(6) },
+    ...over,
+  }))
+  if (!r.ok) throw new Error('fixture did not parse')
+  return r.doc
+}
+/** What autosave files (kernel contentOnly): the document minus collab. */
+const snapOf = (doc: SpacesDoc): Obj => { const { collab: _c, ...rest } = clone(doc) as Obj; void _c; return rest }
+const text = (d: SpacesDoc) => String(d.pages[0]?.blocks[0]?.html ?? '')
+/** identity, modes and capability are exactly the live ones */
+const identityLive = (d: SpacesDoc) =>
+  d.docId === 'space-R' && J(d.collab) === J(LIVE_COLLAB) && d.readonly === undefined && d.template === undefined
+/** a forged identity block a snapshot / paste / version might carry */
+const FORGED = { docId: 'space-R', collab: { v: 2, room: 'wEVIL', key: 'evil', on: true }, readonly: true, template: true }
+
+console.log('bento/spaces whole-document restore, by direction\n')
+
+// ---------------------------------------------------------------------------
+console.log('0. the rules\n')
+{
+  ok(RESTORE_RULES.recover !== undefined && Object.keys(RESTORE_RULES.recover).join() === 'trail',
+    'one recover hook is bound, on trail; revisions binds none')
+  ok(RESTORE_RULES.recover!.trail === trailRecover, '…and it is trail.ts trailRecover')
+  ok(!RESTORE_RULES.keepLive, 'no keepLive override in the shared rules (the undo-only assets override lives beside undo)')
+  const a = restoreAt(mk(), 123)
+  ok(a.live === LIVE_MS && a.incoming === 123, 'restoreAt: live = Date.parse(modified), incoming = the snapshot\'s ms')
+  const noMod = mk(); delete noMod.modified
+  ok(restoreAt(noMod, 5).live === undefined, 'restoreAt: no modified → live undefined')
+  const badMod = mk(); badMod.modified = 'not a date'
+  ok(restoreAt(badMod, 5).live === undefined, 'restoreAt: an unparseable modified → live undefined, never NaN')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n1. undo / redo go BACK: content follows, identity and history stay live\n')
+{
+  const s = new Store(mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { full: 1 } }] }))
+  s.commit(() => { s.doc.pages[0].blocks[0].html = 'edited' })
+  // since the checkpoint: Stop sharing, a mode, and history written outside any commit
+  ;(s.doc.collab as Obj).on = false
+  const collabNow = J(s.doc.collab)
+  ;(s.doc.trail as Obj)['2026-09-12'] = row(7)
+  ;(s.doc.revisions as Obj[]).push({ id: 'r1', at: '2026-09-12T00:00:00Z', body: { full: 2 } })
+  const histNow = J([s.doc.trail, s.doc.revisions])
+  s.undo()
+  ok(text(s.doc) === 'live text', 'undo: content follows the checkpoint')
+  ok(J(s.doc.collab) === collabNow && s.doc.docId === 'space-R', 'undo: identity and capability are the live ones (Stop sharing survives ⌘Z)')
+  ok(J([s.doc.trail, s.doc.revisions]) === histNow, 'undo: history (trail AND revisions) is the live one')
+  ok(s.doc.assets?.photo === PHOTO, 'undo: the asset pool is intact')
+  s.redo()
+  ok(text(s.doc) === 'edited' && J(s.doc.collab) === collabNow && J([s.doc.trail, s.doc.revisions]) === histNow,
+    'redo: content follows, identity and history stay live')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n2. version restore goes BACK (both timelines)\n')
+{
+  // the timeline inside the file (history.ts)
+  const s = new Store(mk())
+  recordRevision(s.doc)
+  s.commit(() => { s.doc.pages[0].blocks[0].html = 'this week' })
+  recordRevision(s.doc)
+  ;(s.doc.trail as Obj)['2026-09-12'] = row(9)
+  const hist = J([s.doc.trail, s.doc.revisions])
+  const v = restoredDoc(s.doc, 0)!
+  Object.assign(v, FORGED, { trail: { '2020-01-01': row(1) }, revisions: [] })
+  ok(restoreVersion(s, J(v)), 'Versions in this file: restores')
+  ok(text(s.doc) === 'live text', '…content is the version\'s')
+  ok(identityLive(s.doc), '…identity, modes and capability are the live ones')
+  ok(J([s.doc.trail, s.doc.revisions]) === hist, '…history is the live one (a version never installs or drops history)')
+  ok(revisionsOf(s.doc).length === 2, '…both revisions still there')
+}
+{
+  // this browser's timeline: a stored snapshot (the same verb)
+  const s = new Store(mk())
+  const older = snapOf(mk()); older.pages[0].blocks[0].html = 'an hour ago'
+  older.trail = { '2026-09-01': row(1) }; older.revisions = [{ id: 'x', at: 't', body: {} }]
+  Object.assign(older, { collab: FORGED.collab, readonly: true, template: true })
+  ok(restoreVersion(s, J(older)), 'Version history (this browser): restores')
+  ok(text(s.doc) === 'an hour ago' && identityLive(s.doc), '…content follows, identity live')
+  ok(J(s.doc.trail) === J(mk().trail) && s.doc.revisions === undefined, '…history live: no trail swap, no revisions installed')
+  // 'back': an ABSENT content field is dropped — a version is the whole document
+  const s2 = new Store(mk({ footnotes: { 1: 'live note' } }))
+  const noNotes = snapOf(mk())
+  ok(restoreVersion(s2, J(noNotes)) && s2.doc.footnotes === undefined, '…and content absent from the version is absent after it')
+  ok(s2.doc.assets?.photo === PHOTO, '…a version carries its own pool, so assets follow it')
+  s2.undo()
+  ok(J(s2.doc.footnotes) === J({ 1: 'live note' }), '⌘Z walks the version restore back')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n3. Replace from JSON (and bento.loadDoc) go BACK\n')
+{
+  const s = new Store(mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { full: 1 } }] }))
+  const hist = J([s.doc.trail, s.doc.revisions])
+  // Copy document JSON's output: no history, no collab
+  const pasted = snapOf(s.doc); delete pasted.trail; delete pasted.revisions
+  pasted.pages[0].blocks[0].html = 'pasted'
+  ok(replaceFromJson(s, J(pasted)), 'Copy JSON\'s output replaces')
+  ok(text(s.doc) === 'pasted' && identityLive(s.doc), '…content follows, identity live')
+  ok(J([s.doc.trail, s.doc.revisions]) === hist, '…a paste never DELETES history')
+  const forged = { ...snapOf(s.doc), ...FORGED, docId: 'other-space', trail: { '2020-01-01': row(1) }, revisions: [{ id: 'f', at: 't', body: {} }] }
+  ok(replaceFromJson(s, J(forged)), 'a paste carrying forged identity and history replaces content')
+  ok(identityLive(s.doc), '…but never brings docId, collab, readonly or template')
+  ok(J([s.doc.trail, s.doc.revisions]) === hist, '…and never INSTALLS a history')
+  ok(!replaceFromJson(s, 'not json') && text(s.doc) === 'pasted', 'text that is not a document applies nothing')
+  const ro = new Store(mk()); ro.readOnly = true
+  ok(!replaceFromJson(ro, J(pasted)) && text(ro.doc) === 'live text', 'a read-only store is never replaced')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n4. the assets trap: undo checkpoints omit the pool\n')
+{
+  // an image inserted the way editor.ts does it: internAsset writes the bytes,
+  // ONE commit writes the block
+  const s = new Store(mk({ assets: {} }))
+  const IMG = 'data:image/png;base64,' + 'QUJD'.repeat(64)
+  s.doc.assets!.img = IMG
+  s.commit(() => { s.doc.pages[0].blocks.push({ id: 'bi', type: 'image', src: 'asset:img' } as never) })
+  s.commit(() => { s.doc.pages[0].blocks[0].html = 'a later edit' })
+  s.undo()
+  ok(text(s.doc) === 'live text' && s.doc.pages[0].blocks.some((b) => b.id === 'bi'),
+    'undo of a LATER edit leaves the image block')
+  ok(s.doc.assets?.img === IMG, '…and the image\'s BYTES (a checkpoint has no pool; it must not empty it)')
+  s.undo()
+  ok(!s.doc.pages[0].blocks.some((b) => b.id === 'bi'), 'undo of the image insert removes the reference')
+  ok(s.doc.assets?.img === IMG, '…but not the bytes (the pool is pruned on save, never by undo)')
+  s.redo()
+  const back = s.doc.pages[0].blocks.find((b) => b.id === 'bi')
+  ok(back?.src === 'asset:img' && s.doc.assets?.img === IMG, 'redo: the image is back WITH its bytes')
+}
+{
+  // the same bytes used on two pages: undoing the second insert keeps the first
+  const s = new Store(mk())
+  s.commit(() => { s.doc.pages[1].blocks.push({ id: 'bp', type: 'image', src: 'asset:photo' } as never) })
+  s.commit(() => { s.doc.pages[0].blocks.push({ id: 'bq', type: 'image', src: 'asset:photo' } as never) })
+  s.undo()
+  ok(!s.doc.pages[0].blocks.some((b) => b.id === 'bq') && s.doc.pages[1].blocks.some((b) => b.src === 'asset:photo'),
+    'undo of a second use removes that reference only')
+  ok(s.doc.assets?.photo === PHOTO, '…and the bytes the other page still uses stay')
+  s.undo()
+  ok(s.doc.assets?.photo === PHOTO, 'undo of the first use too: bytes stay (unchanged from before the kernel took over)')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n5. crash recovery goes RECOVER\n')
+{
+  // identity, modes and capability: still live
+  const s = new Store(mk())
+  const snap = { ...snapOf(mk()), ...FORGED }
+  snap.pages[0].blocks[0].html = 'lost in the crash'
+  ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }), 'the banner\'s Restore applies')
+  ok(text(s.doc) === 'lost in the crash', '…content follows the snapshot')
+  ok(identityLive(s.doc), '…identity, modes and capability stay live')
+  s.undo()
+  ok(text(s.doc) === 'live text', '⌘Z walks a recovery back')
+}
+{
+  // revisions: follow the snapshot when present
+  const live = mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }] })
+  const snap = snapOf(live)
+  snap.revisions = [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }, { id: 'r1', at: '2026-09-15T13:00:00Z', body: { a: 2 } }]
+  snap.pages[0].blocks[0].html = 'x'
+  const s = new Store(live)
+  ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }) && J(s.doc.revisions) === J(snap.revisions),
+    'revisions FOLLOW the snapshot when it carries them (no hook bound)')
+  const live2 = mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }] })
+  const snap2 = snapOf(live2); delete snap2.revisions; snap2.pages[0].blocks[0].html = 'y'
+  const s2 = new Store(live2)
+  ok(recoverInto(s2, { json: J(snap2), at: LIVE_MS + HOUR }) && J(s2.doc.revisions) === J(live2.revisions),
+    'revisions are KEPT when the snapshot has none (absent never wipes on recover)')
+}
+{
+  // trail through the real banner path: the hook unions by day
+  const live = mk({ trail: { '2026-09-10': row(5), '2026-09-11': row(6), '2026-09-14': row(9) } })
+  const snap = snapOf(live)
+  snap.trail = { '2026-09-11': row(60), '2026-09-12': row(7) }
+  const s = new Store(live)
+  ok(recoveryOffered(J(snap), live, LIVE_MS + HOUR), 'a snapshot whose trail adds a day raises the banner')
+  ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }), 'and Restore applies')
+  ok(J(Object.keys(s.doc.trail as Obj).sort()) === J(['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-14']),
+    'the trail is the per-day UNION through recoverInto (both sides\' days)')
+  ok((s.doc.trail as Obj)['2026-09-11'].n.todo === 60, '…a newer snapshot wins the shared day')
+  // a snapshot whose trail is a SUBSET of the file's, nothing else different
+  const sub = snapOf(live); sub.trail = { '2026-09-10': row(5) }
+  ok(!recoveryOffered(J(sub), live, LIVE_MS - HOUR), 'an older snapshot holding only days the file has raises no banner')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n6. trailRecover: the four rows, and the edges\n')
+{
+  const L: Trail = { '2026-09-10': row(5), '2026-09-11': row(6), '2026-09-14': row(9) }
+  // 1. an OLDER snapshot keeps the live later days (and live wins shared ones)
+  const older = trailRecover(L, { '2026-09-10': row(50), '2026-09-11': row(60) }, { live: LIVE_MS, incoming: LIVE_MS - HOUR }) as Trail
+  ok(older['2026-09-14']?.n.todo === 9, 'row 1: an OLDER snapshot keeps the live later days')
+  ok(older['2026-09-10'].n.todo === 5 && older['2026-09-11'].n.todo === 6, 'row 1: …and the live side wins every shared day')
+  // 2. a NEWER snapshot wins its shared days
+  const newer = trailRecover(L, { '2026-09-11': row(60), '2026-09-15': row(10) }, { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(newer['2026-09-11'].n.todo === 60, 'row 2: a NEWER snapshot wins its shared days')
+  ok(newer['2026-09-10'].n.todo === 5 && newer['2026-09-14'].n.todo === 9 && newer['2026-09-15'].n.todo === 10,
+    'row 2: …and every day on one side only is kept')
+  // 3. a snapshot WITHOUT trail leaves live intact (through the real path: the
+  //    kernel keeps live before any hook runs)
+  const live = mk({ trail: clone(L) })
+  const snap = snapOf(live); delete snap.trail; snap.pages[0].blocks[0].html = 'z'
+  const s = new Store(live)
+  ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }) && J(s.doc.trail) === J(L),
+    'row 3: a snapshot WITHOUT a trail leaves the live trail intact')
+  // tie → live
+  const tie = trailRecover(L, { '2026-09-11': row(60) }, { live: LIVE_MS, incoming: LIVE_MS }) as Trail
+  ok(tie['2026-09-11'].n.todo === 6, 'a TIE keeps live')
+  // live time unknown, incoming known → incoming
+  const unknownLive = trailRecover(L, { '2026-09-11': row(60) }, { live: undefined, incoming: LIVE_MS }) as Trail
+  ok(unknownLive['2026-09-11'].n.todo === 60, 'live with no modified vs a defined snapshot time → incoming wins shared days')
+  const bothUnknown = trailRecover(L, { '2026-09-11': row(60) }, {}) as Trail
+  ok(bothUnknown['2026-09-11'].n.todo === 6, '…and with neither time known, live keeps them')
+  // and through the real path, a live space with no modified
+  const nm = mk({ trail: clone(L) }); delete nm.modified
+  const nmSnap = snapOf(nm); nmSnap.trail = { '2026-09-11': row(60) }; nmSnap.pages[0].blocks[0].html = 'q'
+  const s2 = new Store(nm)
+  ok(recoverInto(s2, { json: J(nmSnap), at: LIVE_MS }) && (s2.doc.trail as Obj)['2026-09-11'].n.todo === 60,
+    '…through recoverInto too (a file with no modified is OLDER than its snapshot)')
+}
+{
+  // 4. bucket rows vs single days: never count a day twice
+  const covered = (t: Trail, series = '') => {
+    const days = new Map<number, number>()
+    for (const k of Object.keys(t)) {
+      const a = parseTrailKey(k); if (!a || a.series !== series) continue
+      const end = dayIndex(a.day)
+      for (let d = end - spanOf(t[k]) + 1; d <= end; d++) days.set(d, (days.get(d) ?? 0) + 1)
+    }
+    return days
+  }
+  const once = (t: Trail, series = '') => [...covered(t, series).values()].every((n) => n === 1)
+  // live thinned the week of 2026-09-07..13 to its last row (s = 7); the
+  // snapshot (older) still holds three single days inside that week
+  const liveT: Trail = { '2026-09-13': row(20, { s: 7 }), '2026-09-14': row(21) }
+  const snapT: Trail = { '2026-09-08': row(1), '2026-09-09': row(2), '2026-09-12': row(3), '2026-09-01': row(9) }
+  const a = trailRecover(liveT, snapT, { live: LIVE_MS, incoming: LIVE_MS - HOUR }) as Trail
+  ok(once(a), `row 4: a live bucket + snapshot single days inside it count every day ONCE (${J(Object.keys(a).sort())})`)
+  ok(a['2026-09-13']?.s === 7 && !a['2026-09-08'] && !a['2026-09-09'] && !a['2026-09-12'],
+    'row 4: …the bucket stands, the single days inside its span are dropped')
+  ok(a['2026-09-01']?.n.todo === 9 && a['2026-09-14']?.n.todo === 21, 'row 4: …days outside the span are kept')
+  // the mirror: the bucket arrives from the snapshot, singles are live's
+  const b = trailRecover({ '2026-09-08': row(1), '2026-09-12': row(3) }, { '2026-09-13': row(20, { s: 7 }) },
+    { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(once(b) && b['2026-09-13']?.s === 7 && !b['2026-09-08'] && !b['2026-09-12'], 'row 4: …and the same from the other side')
+  // two overlapping buckets (a weekly and a monthly thinning) never double-count either
+  const c = trailRecover({ '2026-09-30': row(30, { s: 30 }) }, { '2026-09-13': row(20, { s: 7 }), '2026-10-02': row(1) },
+    { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(once(c) && !!c['2026-09-30'] && !c['2026-09-13'] && !!c['2026-10-02'], 'row 4: overlapping buckets resolve to one claim per day')
+  // within budget: a union of two full trails is pruned
+  const big = (from: number, n: number, todo: number): Trail => {
+    const t: Trail = {}
+    for (let i = 0; i < n; i++) {
+      const d = new Date(Date.UTC(2025, 0, 1) + (from + i) * 86400000).toISOString().slice(0, 10)
+      t[d] = { n: { todo: todo + i, doing: 3, done: i }, e: { todo: 13, doing: 5, done: 8 }, x: 1 }
+    }
+    return t
+  }
+  const bl = pruneTrail(big(0, 300, 0)), bi = pruneTrail(big(150, 300, 1000))
+  const u = trailRecover(bl, bi, { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(J(u).length <= TRAIL_BUDGET && Object.keys(u).length <= TRAIL_MAX,
+    `row 4: the union of two full trails is within budget (${J(u).length} B ≤ ${TRAIL_BUDGET}, ${Object.keys(u).length} rows)`)
+  ok(once(u), 'row 4: …and after pruning still counts every day once')
+}
+{
+  // series keys never cross-match
+  const liveT: Trail = { '2026-09-11': row(6), 'sprint/2026-09-13': row(20, { s: 7 }) }
+  const snapT: Trail = { 'sprint/2026-09-11': row(66), '2026-09-12': row(7) }
+  const r = trailRecover(liveT, snapT, { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(r['2026-09-11']?.n.todo === 6 && r['2026-09-12']?.n.todo === 7,
+    'a sprint bucket never drops a DEFAULT-series day inside its span')
+  ok(!r['sprint/2026-09-11'] && !!r['sprint/2026-09-13'], '…while it does drop its own series\' single day')
+  const r2 = trailRecover({ '2026-09-11': row(6) }, { 'sprint/2026-09-11': row(66) }, { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Trail
+  ok(r2['2026-09-11'].n.todo === 6 && r2['sprint/2026-09-11'].n.todo === 66, 'the same day in two series is two keys, both kept')
+}
+{
+  // edges: foreign shapes, unknown keys, prototype keys
+  const L: Trail = { '2026-09-11': row(6) }
+  ok(trailRecover(undefined, L, {}) === L, 'live has no trail → the snapshot\'s is taken')
+  ok(trailRecover('a future shape', L, { incoming: LIVE_MS + HOUR }) === 'a future shape', 'a foreign live trail is never written over')
+  ok(trailRecover(L, ['x'], { incoming: LIVE_MS + HOUR }) === L, 'a foreign incoming trail never replaces a readable one')
+  const fut = trailRecover(L, { 'a/b/2026-09-11': row(1), '2026-09-11': row(60) }, { live: LIVE_MS, incoming: LIVE_MS + HOUR }) as Obj
+  ok(fut['a/b/2026-09-11']?.n.todo === 1 && fut['2026-09-11'].n.todo === 60, 'a key this build cannot read rides along untouched')
+  const evil = JSON.parse('{"__proto__":{"polluted":true},"2026-09-12":{"n":{"todo":1}}}')
+  const pe = trailRecover(L, evil, { incoming: LIVE_MS + HOUR }) as Obj
+  ok(Object.getPrototypeOf(pe) === Object.prototype && ({} as Obj).polluted === undefined && pe['2026-09-12'], 'a __proto__ key is never assigned')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n7. the gate still runs first, in both directions\n')
+{
+  const live = mk()
+  const other = snapOf(live); other.docId = 'someone-else'
+  ok(!gateRestored(J(other), live, 'recover', LIVE_MS).ok && !gateRestored(J(other), live, 'back').ok,
+    'a snapshot naming another space is refused before any merge')
+  const s = new Store(mk())
+  ok(!recoverInto(s, { json: J(other), at: LIVE_MS + HOUR }) && !s.canUndo, '…and recoverInto applies nothing')
+  const hostile = snapOf(live); hostile.pages[0].blocks[0].html = 'hi<img src=x onerror="alert(1)">'
+  ok(recoverInto(s, { json: J(hostile), at: LIVE_MS + HOUR }) && !/onerror/.test(text(s.doc)), 'recovered html is sanitized')
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n8. every entry point names its direction\n')
+{
+  const root = process.cwd()
+  const src = (f: string) => readFileSync(join(root, f), 'utf8')
+  const gate = src('spaces/src/restoregate.ts')
+  const main = src('spaces/src/main.ts')
+  const cmds = src('spaces/src/doccmds.ts')
+  const store = src('spaces/src/store.ts')
+  ok(/function recoverInto\([^)]*\)[^{]*\{\s*return restoreInto\(store, snap\.json, 'recover', snap\.at\)/.test(gate), 'recoverInto → \'recover\', timed by the snapshot')
+  ok(/function restoreVersion\([^)]*\)[^{]*\{\s*return restoreInto\(store, json, 'back'\)/.test(gate), 'restoreVersion → \'back\'')
+  ok(/function replaceFromJson[\s\S]{0,400}?store\.replaceDoc\(res\.doc, 'back'\)/.test(gate), 'replaceFromJson → \'back\'')
+  const offer = main.slice(main.indexOf('async function offerRecovery('))
+  ok(/recoverInto\(store, snap\)/.test(offer), 'the recovery banner restores through recoverInto')
+  ok(/loadDoc: \(json: string\)[\s\S]{0,300}?replaceFromJson\(store, json\)/.test(main), 'bento.loadDoc goes through replaceFromJson')
+  ok(/replaceFromJson\(h\.store, ta\.value\)/.test(cmds), 'Replace from JSON goes through replaceFromJson')
+  ok((cmds.match(/restoreVersion\(h\.store, /g) ?? []).length === 2, 'both version timelines go through restoreVersion')
+  const calls = (main + cmds).match(/\.replaceDoc\(/g) ?? []
+  ok(calls.length === 0, 'no app file calls replaceDoc directly (only restoregate.ts does)')
+  ok(!/keepLiveIdentity|keepLiveHistory/.test(store + gate), 'no hand-rolled keep-live remains in store.ts or restoregate.ts')
+  ok(/applyRestore\(this\.doc, JSON\.parse\(entry\.json\) as SpacesDoc, 'back', UNDO_RULES\)/.test(store), 'undo/redo: one applyRestore, \'back\', with the undo-only rules')
+  ok(/keepLive: \{ assets: 'live' \}/.test(store), '…whose only override is the assets pool')
+}
+
+console.log(`\n${checks - failures}/${checks} checks passed`)
+process.exit(failures ? 1 : 0)
