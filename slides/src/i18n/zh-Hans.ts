@@ -46,6 +46,7 @@ export const zhHans: Catalog = {
   "Laser pointer (L)": "激光笔 (L)",
   "Toggle laser pointer while presenting": "演示时开启或关闭激光笔",
   "Backed up in this browser": "已备份到此浏览器",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "此演示文稿的崩溃恢复已关闭 — 文件太大，无法保留备份。请经常保存。",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "未保存的更改 — 已于 {when} 保存在此浏览器中，重新打开时可以恢复。⌘S 将下载更新后的副本。",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "未保存的更改 — ⌘S 将下载更新后的副本（此浏览器无法改写文件）",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "保存 — 下载更新后的副本（⌘S）。此浏览器无法改写已打开的文件。",

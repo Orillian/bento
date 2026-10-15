@@ -46,6 +46,7 @@ export const zhHant: Catalog = {
   "Laser pointer (L)": "雷射筆 (L)",
   "Toggle laser pointer while presenting": "簡報時開啟或關閉雷射筆",
   "Backed up in this browser": "已備份到此瀏覽器",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "此簡報的當機復原已關閉 — 檔案太大，無法保留備份。請經常儲存。",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "未儲存的變更 — 已於 {when} 保存在此瀏覽器中，重新開啟時可以還原。⌘S 會下載更新後的副本。",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "未儲存的變更 — ⌘S 會下載更新後的副本（此瀏覽器無法改寫檔案）",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "儲存 — 下載更新後的副本（⌘S）。此瀏覽器無法改寫已開啟的檔案。",

@@ -707,6 +707,7 @@ export const pt: Catalog = {
   "Set how fast the element moves through that point": "Define a velocidade com que o elemento passa por esse ponto",
   "Scroll a point": "Role sobre um ponto",
   "Backed up in this browser": "Salvo neste navegador",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "A recuperação de falhas está desativada para esta apresentação: ela é grande demais para manter uma cópia de segurança. Salve com frequência.",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "Alterações não salvas — guardadas neste navegador às {when} e oferecidas de volta se você reabrir. ⌘S baixa uma cópia atualizada.",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "Alterações não salvas — ⌘S baixa uma cópia atualizada (este navegador não consegue regravar o arquivo)",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "Salvar — baixar uma cópia atualizada (⌘S). Este navegador não consegue regravar o arquivo aberto.",

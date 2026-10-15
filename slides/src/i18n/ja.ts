@@ -46,6 +46,7 @@ export const ja: Catalog = {
   "Laser pointer (L)": "レーザーポインター (L)",
   "Toggle laser pointer while presenting": "プレゼン中にレーザーポインターのオン／オフを切り替え",
   "Backed up in this browser": "このブラウザに保存しました",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "このデッキのクラッシュ復旧はオフです — 大きすぎてバックアップを保存できません。こまめに保存してください。",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "未保存の変更 — {when} にこのブラウザへ保存済みで、再度開いたときに復元できます。⌘S は更新されたコピーをダウンロードします。",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "未保存の変更 — ⌘S は更新されたコピーをダウンロードします（このブラウザはファイルを上書きできません）",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "保存 — 更新されたコピーをダウンロード（⌘S）。このブラウザは開いているファイルを上書きできません。",

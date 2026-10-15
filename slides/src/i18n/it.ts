@@ -46,6 +46,7 @@ export const it: Catalog = {
   "Laser pointer (L)": "Puntatore laser (L)",
   "Toggle laser pointer while presenting": "Attiva/disattiva il puntatore laser durante la presentazione",
   "Backed up in this browser": "Salvato in questo browser",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "Il ripristino dopo un arresto anomalo è disattivato per questa presentazione: è troppo grande per conservarne una copia di backup. Salva spesso.",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "Modifiche non salvate — conservate in questo browser alle {when} e riproposte alla riapertura. ⌘S scarica una copia aggiornata.",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "Modifiche non salvate — ⌘S scarica una copia aggiornata (questo browser non può riscrivere il file)",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "Salva — scarica una copia aggiornata (⌘S). Questo browser non può riscrivere il file aperto.",

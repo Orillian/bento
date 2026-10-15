@@ -46,6 +46,7 @@ export const de: Catalog = {
   "Laser pointer (L)": "Laserpointer (L)",
   "Toggle laser pointer while presenting": "Laserpointer während der Präsentation ein-/ausschalten",
   "Backed up in this browser": "In diesem Browser gesichert",
+  "Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.": "Die Absturzwiederherstellung ist für diese Präsentation aus – sie ist zu groß für eine Sicherungskopie. Speichere oft.",
   "Unsaved changes — kept in this browser at {when} and offered back if you reopen. ⌘S downloads an updated copy.": "Nicht gespeicherte Änderungen — um {when} in diesem Browser gesichert und beim erneuten Öffnen angeboten. ⌘S lädt eine aktualisierte Kopie herunter.",
   "Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)": "Nicht gespeicherte Änderungen — ⌘S lädt eine aktualisierte Kopie herunter (dieser Browser kann die Datei nicht überschreiben)",
   "Save — download an updated copy (⌘S). This browser can’t rewrite the open file.": "Speichern — aktualisierte Kopie herunterladen (⌘S). Dieser Browser kann die geöffnete Datei nicht überschreiben.",

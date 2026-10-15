@@ -11,6 +11,13 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **You're told when a deck has no crash backup.** Opened through bento/home,
+  a deck's crash-recovery copy is kept by the app; when a deck is too large for
+  it, the editor now says "Crash recovery is off for this deck — it’s too large
+  to keep a backup copy. Save often." once, where the save status shows, and
+  the unsaved-changes dot stops saying your work is kept in this browser.
+  Encrypted decks are never backed up there, so they never show it.
+
 - **Indent and outdent bullets.** While editing text, Tab moves the bullet
   under the caret one level deeper, beneath the one above it, and Shift+Tab
   moves it back up; select several lines to move them together. This works on

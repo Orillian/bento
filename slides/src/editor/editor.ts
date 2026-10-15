@@ -29,7 +29,7 @@ import { adoptFileHandle, canWriteInPlace, currentFileName, fileBase, hasFileHan
 import { createSaveQueue, saveRevision } from '../saving'
 import type { SaveQueue } from '../../../kernel/src/savequeue.ts'
 import { noteSavedFromWeb } from './returngate'
-import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, listVersions, pruneOld, putRecovery, type Snapshot } from '../autosave'
+import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, listVersions, onRecoveryOff, pruneOld, putRecovery, type Snapshot } from '../autosave'
 import { insertElements, insertSlides, parseClip, serializeElements, serializeSlides } from './clipboard'
 import { estimatedFrames, fencedElements, splitFences } from './codefence'
 import { openSpeakerWindow, speakerIdleBody } from '../screens'
@@ -2640,6 +2640,27 @@ export class Editor {
     this.noticeIfCannotWriteInPlace()
     this.noticeIfJustUpdated()
     this.store.on('doc', () => this.scheduleAutosave())
+    onRecoveryOff((docId) => this.noticeRecoveryOff(docId))
+  }
+
+  /** Decks told, in this page, that their crash recovery is off — once each. */
+  private recoveryOffSaid = new Set<string>()
+
+  /**
+   * A host with a per-document store (bento/home) refused this deck's recovery
+   * copy, so from now on there is NO crash backstop for it. Say so, once, where
+   * the save status shows, and stop the unsaved dot's tooltip claiming the work
+   * is "kept in this browser". Never for an encrypted deck: those are never
+   * snapshotted, so there was no backstop to lose.
+   */
+  private noticeRecoveryOff(docId: string) {
+    if (docId !== this.store.doc.docId || isEncryptionActive() || this.recoveryOffSaid.has(docId)) return
+    this.recoveryOffSaid.add(docId)
+    this.lastBackupAt = 0
+    this.dirtyDot.title = canWriteInPlace()
+      ? t('Unsaved changes — ⌘S saves this file in place')
+      : t('Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)')
+    this.flashSaved(t('Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.'), 8000)
   }
 
   private scheduleAutosave() {
@@ -3082,7 +3103,7 @@ export class Editor {
   }
 
   private savedTimer = 0
-  private flashSaved(message = t('Saved')) {
+  private flashSaved(message = t('Saved'), holdMs = 1400) {
     const title = document.querySelector<HTMLElement>('.ed-topbar .ed-title')
     const bar = title?.parentElement
     if (!title || !bar) return
@@ -3098,7 +3119,7 @@ export class Editor {
     void tag.offsetWidth // paint a frame at opacity 0 so the fade-in runs
     tag.classList.add('show')
     clearTimeout(this.savedTimer)
-    this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), 1400)
+    this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), holdMs)
   }
 
   async save(forcePicker: boolean) {
