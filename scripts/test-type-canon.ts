@@ -31,8 +31,9 @@
 
 import {
   canonicalize, digest, sign, verify, verifyChain, newKey, exportPub, VOLATILE,
-  SIGNED_EXCLUDE, historyCommitment, newHistorySalt,
+  SIGNED_EXCLUDE, historyCommitment, newHistorySalt, historyDisplay,
 } from '../type/src/canon.ts';
+import { readFileSync } from 'node:fs';
 import { TYPE_FIELDS } from '../type/src/docclass.ts';
 
 let checks = 0, failures = 0;
@@ -455,6 +456,37 @@ H('v2: a re-sign after trimming the history');
   ok(res.entries[0].ok && res.entries[0].history === 'changed',
     'and the pre-trim signature still attests the content but reports its history CHANGED — '
     + 'expected after a trim, and the UI must say a trim does this');
+}
+
+H('the panel shows history only where this replica can know it (ruling 8)');
+{
+  // History does not sync, so another replica's signature routinely reads
+  // "changed" or "missing" here — the EXPECTED condition. Showing that as a
+  // warning trains people to ignore it. So: compared and shown for THIS
+  // device's signatures; neutral for everyone else's.
+  const d = (st: Parameters<typeof historyDisplay>[0], mine: boolean) => historyDisplay(st, mine);
+  ok(d('changed', true).tone === 'warn' && d('changed', true).line === 'changed', 'MY signature, history changed → a warning');
+  ok(d('missing', true).tone === 'warn' && d('missing', true).line === 'missing', 'MY signature, history missing → a warning');
+  ok(d('changed', false).tone === 'neutral' && d('changed', false).line === 'elsewhere',
+    'SOMEONE ELSE\'s signature whose history differs → neutral "kept on the signer\'s copy", never a warning');
+  ok(d('missing', false).tone === 'neutral' && d('missing', false).line === 'elsewhere',
+    'and the same when this replica holds none of their history');
+  ok(d('matches', false).tone === 'ok' && d('matches', true).tone === 'ok',
+    'a match is shown for anyone — this replica demonstrably holds the signed history');
+  ok(d('not-included', false).tone === 'neutral' && d('not-included', true).tone === 'neutral',
+    'a view-only copy is neutral either way');
+  const tones = (['matches', 'changed', 'missing', 'not-included'] as const).flatMap(st => [d(st, true), d(st, false)]);
+  ok(!tones.some(x => x.tone === 'ok' && x.line !== 'matches'),
+    'nothing but an actual match is ever shown as ok — a neutral line never reads as safe');
+
+  // The panel decides "mine" by comparing against THIS device's key, read
+  // without minting one. Checked by source: DOM code no rig can run.
+  const main = readFileSync(new URL('../type/src/main.ts', import.meta.url), 'utf8');
+  ok(/historyDisplay\(r\.history, mine !== null && s\.pub === mine\)/.test(main),
+    'the panel passes "mine" only for a signature made with this device\'s own key');
+  const dp = main.slice(main.indexOf('async function devicePub'), main.indexOf('const fingerprint'));
+  ok(/if \(!saved\) return null;/.test(dp) && dp.indexOf('if (!saved) return null;') < dp.indexOf('getKey()'),
+    'and devicePub returns null BEFORE getKey can mint a key — painting never creates one');
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`);

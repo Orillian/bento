@@ -24,7 +24,7 @@ import { Editor } from './editor.ts';
 import { paginate, drawPages, type Metrics } from './paginate.ts';
 import { takeSnapshot, startReview } from './redlineview.ts';
 import { printDocument, buildPrintDocument } from './print.ts';
-import { sign as signDoc, verifyChain, newKey, newHistorySalt } from './canon.ts';
+import { sign as signDoc, verifyChain, newKey, newHistorySalt, exportPub, historyDisplay, type HistoryLine } from './canon.ts';
 
 // Tell the kernel who this app is — must precede any kernel module use
 // (window title suffix, save-picker label, update manifest).
@@ -813,6 +813,16 @@ async function getKey(): Promise<CryptoKeyPair> {
   deviceKey = k;
   return k;
 }
+/** This device's public key, or null if it has never signed. NEVER mints a
+ *  key: painting the Signatures panel must not create a signing key as a side
+ *  effect. (getKey only mints when nothing is saved, and this returns first.) */
+async function devicePub(): Promise<string | null> {
+  if (deviceKey) return exportPub(deviceKey);
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(KEYSTORE); } catch { /* storage blocked */ }
+  if (!saved) return null;
+  return exportPub(await getKey());
+}
 const fingerprint = (pub: string) =>
   pub.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).match(/.{1,4}/g)!.join(' ').toUpperCase();
 
@@ -838,6 +848,17 @@ document.getElementById('sign')!.addEventListener('click', async () => {
   toast('Signed');
 });
 
+/** Each history line as a LITERAL t() call, so the i18n sweep finds them. */
+function historyLabel(line: HistoryLine): string {
+  switch (line) {
+    case 'matches': return t('History matches what was signed');
+    case 'not-included': return t('This copy doesn’t include the history');
+    case 'elsewhere': return t('History kept on the signer’s copy');
+    case 'changed': return t('The history has changed since you signed — a Snapshot or a trim does this');
+    case 'missing': return t('The history you signed is missing from this document');
+  }
+}
+
 async function paintSigs() {
   const box = document.getElementById('sigsPanel')!;
   const sigs = store.doc.signatures;
@@ -852,19 +873,30 @@ async function paintSigs() {
     return;
   }
   const res = await verifyChain(store.doc, sigs);
+  const mine = await devicePub();
   sigs.forEach((s, i) => {
     const r = res.entries[i];
     const card = el('div', 't-card');
-    const state = r.ok && r.linked ? `<span class="t-ok">✓ valid</span>`
+    // ATTESTATION — checked for every signature: is it valid, and is the
+    // content what was signed?
+    const state = r.ok && r.linked ? `<span class="t-ok">${esc(t('✓ valid'))}</span>`
       : (!r.ok && r.why === 'content-changed'
-        ? `<span class="t-bad">✕ the document has changed since this was signed</span>`
-        : !r.linked ? `<span class="t-warn">⚠ not linked to the previous signature</span>`
-        : `<span class="t-bad">✕ invalid signature</span>`);
+        ? `<span class="t-bad">${esc(t('✕ the content has changed since this was signed'))}</span>`
+        : !r.linked ? `<span class="t-warn">${esc(t('⚠ not linked to the previous signature'))}</span>`
+        : `<span class="t-bad">${esc(t('✕ invalid signature'))}</span>`);
+    // HISTORY — shown as a state only where this replica can know it (ruling
+    // (8), canon.ts historyDisplay); someone else's reads neutral.
+    const h = historyDisplay(r.history, mine !== null && s.pub === mine);
+    const label = historyLabel(h.line);
+    const hist = h.tone === 'neutral'
+      ? `<div class="t-note">${esc(label)}</div>`
+      : `<div class="t-note"><span class="${h.tone === 'ok' ? 't-ok' : 't-warn'}">${esc(label)}</span></div>`;
     card.innerHTML =
       `<div class="what" style="font-weight:600">${esc(s.name || 'unnamed')}</div>` +
       `<div class="t-fp">${fingerprint(s.pub)}</div>` +
       `<div class="who" style="margin:5px 0 0">${state}` +
-      `${i > 0 ? ` · after ${esc(sigs[i - 1].name || 'previous')}` : ''}</div>`;
+      `${i > 0 ? ` · ${esc(t('after {name}', { name: sigs[i - 1].name || 'previous' }))}` : ''}</div>` +
+      hist;
     box.appendChild(card);
   });
   // two names on one key is exactly what a signature cannot prove

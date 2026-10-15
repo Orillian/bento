@@ -366,3 +366,31 @@ export async function verifyChain(doc: Signable, chain: Signature[]): Promise<Ch
   }
   return { ok: out.every(r => r.ok && r.linked), entries: out };
 }
+
+/**
+ * How the Signatures panel presents a history state — maintainer ruling (8),
+ * 2026-10-15.
+ *
+ * History is compared and SHOWN only where this replica can actually know it:
+ * for a signature made with THIS device's key, or where the replica demonstrably
+ * holds the signed history (`matches`). Every other signature was made on
+ * another replica, whose revisions this one never receives (history does not
+ * sync), so "changed" or "missing" there is the EXPECTED condition — and a check
+ * that routinely warns on an expected condition trains people to ignore it, then
+ * miss a real alteration. Those read as the ruling's neutral line instead.
+ * Attestation (the signature, the content) is checked for every signature
+ * regardless; this governs only the history line.
+ *
+ * Returns a CODE and a tone, never display text: the panel maps each code to a
+ * literal t('…') call, which is what the i18n sweep can find. Never "verified":
+ * neutral lines state a fact about this copy, never that something is safe.
+ *   elsewhere  someone else's signature whose history this replica cannot see
+ */
+export type HistoryTone = 'ok' | 'warn' | 'neutral';
+export type HistoryLine = 'matches' | 'not-included' | 'elsewhere' | 'changed' | 'missing';
+export function historyDisplay(state: HistoryState, mine: boolean): { tone: HistoryTone; line: HistoryLine } {
+  if (state === 'matches') return { tone: 'ok', line: 'matches' };
+  if (state === 'not-included') return { tone: 'neutral', line: 'not-included' };
+  if (!mine) return { tone: 'neutral', line: 'elsewhere' };
+  return { tone: 'warn', line: state };            // 'changed' | 'missing', on THIS device's own signature
+}
