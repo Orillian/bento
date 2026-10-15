@@ -2408,6 +2408,13 @@ jobs:
         # long enough to read; the dot stops claiming a backup; a host that
         # keeps the copy gets no message; never for an encrypted deck.
         run: node scripts/test-slides-recovery-off-browser.mjs
+      - name: Save a copy and the older-snapshot banner in Chromium
+        # "Save a copy…" says "Copy saved — you are still editing the original",
+        # keeps the chip, title and dot on the original, and the next ⌘S writes
+        # the original with no picker; an older recovery snapshot gets the
+        # warning banner (Keep the file is the default and deletes nothing), a
+        # newer one the plain banner that claims nothing.
+        run: node scripts/test-slides-save-copy-browser.mjs
       - name: Ghost Cut in Chromium
         # ⇧⌘X fades the selection by CSS (shadowed elements too) and copies it;
         # a ghost is never selected and the pointer passes through it; Esc
