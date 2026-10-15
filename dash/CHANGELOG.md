@@ -12,6 +12,22 @@ There is no server, so a break here would be permanent.
 
 The release that came out of watching somebody use 0.2.0.
 
+- **Save a copy keeps you on the original.** The copy is written and you go
+  on editing the file you opened: ⌘S, the automatic save and the unsaved dot
+  all stay with the original, and the message says so. Before, the copy quietly
+  became the file you were editing.
+
+- **A recovered copy that looks older than the file says so.** When the copy
+  kept in this browser predates the file you opened, the banner warns you and
+  makes "Keep the file" the default, with "Restore anyway" beside it. It is
+  still offered, because two devices' clocks can disagree, and keeping the file
+  does not delete the copy.
+
+- **When crash recovery is off for a large workbook, dash tells you.** If the
+  workbook is too large to keep a backup copy, a message says so once and asks
+  you to save often, instead of the message about a browser that keeps no
+  backups.
+
 - **Portuguese.** dash's interface is available in Portuguese, the eighth
   language beside English, Japanese, Simplified and Traditional Chinese,
   Spanish, French, German and Italian. The translation rig now finds the
