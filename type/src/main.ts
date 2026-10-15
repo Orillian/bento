@@ -248,7 +248,9 @@ const showAbout = () => openAbout({
   onRestoreDoc: json => {
     const doc = gateRestored(json, store.doc);
     if (!doc) { alert(t('That saved version could not be restored.')); return; }
-    store.replace(doc);
+    // Going BACK to an older version: its content returns, but history stays
+    // live, so restoring never discards revisions made since (restorerules.ts).
+    store.restore(doc, 'back');
     editor.render();
     schedule();
   },

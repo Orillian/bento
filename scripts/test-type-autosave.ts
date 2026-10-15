@@ -27,7 +27,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { configureApp } from '../kernel/src/app.ts'
 import { setEncryptionPassword } from '../kernel/src/save.ts'
-import { docContentKey, canSnapshot } from '../type/src/autosave.ts'
+import { docContentKey, canSnapshot, recoveryBanner } from '../type/src/autosave.ts'
+import { sign, newKey, verifyChain } from '../type/src/canon.ts'
+import { RESTORE_RULES } from '../type/src/restorerules.ts'
+import { validateRestoreRules } from '../kernel/src/docfields.ts'
 import { emptyDoc, uid, type TypeDoc } from '../type/src/model.ts'
 import { Store } from '../type/src/store.ts'
 import { gateRestored } from '../type/src/restoregate.ts'
@@ -222,6 +225,122 @@ H('a recovery snapshot with NO signatures never pairs its revisions with the liv
     'and NO signatures — the snapshot\'s unsigned state, not an absent field')
   ok(!JSON.stringify(store.doc.signatures ?? []).includes('Bob'),
     'the file\'s signatures are never paired with the snapshot\'s revisions')
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RESTORE DIRECTIONS (restorerules.ts, kernel applyRestore): undo/redo and a
+// version restore go BACK — content follows, history stays live; the recovery
+// banner RECOVERS — content and history follow the newer copy together.
+const rev = (id: string, text: string) => ({ id, at: '2026-01-01T00:00:00.000Z', label: id, body: [{ id: 'p0', kind: 'para', text }] })
+
+H('a Snapshot is a record, not an edit — and undo can never take one back')
+{
+  const store = new Store(doc())
+  store.commit(d => { d.body[0].text = 'Payment is due within 45 days.' })          // an ordinary edit
+  store.commit(d => { d.revisions.push(rev('r1', 'draft')) }, { undoable: false })  // what ⋯ → Snapshot does
+  ok(store.doc.revisions.length === 1, 'the Snapshot is recorded')
+  ok(store.undo(), 'undo takes back the EDIT')
+  ok(store.doc.body[0].text === 'Payment is due within 30 days.', 'the text reverts')
+  ok(store.doc.revisions.length === 1 && store.doc.revisions[0].id === 'r1',
+    'but the revision SURVIVES — a document-level undo keeps history live')
+  ok(!store.undo(), 'and the Snapshot itself is not on the undo stack at all')
+  const red = readFileSync(fileURLToPath(new URL('../type/src/redlineview.ts', import.meta.url)), 'utf8')
+  const snapFn = red.slice(red.indexOf('export function takeSnapshot'), red.indexOf('export function startReview'))
+  ok(/\}, \{ undoable: false \}\);/.test(snapFn), '⋯ → Snapshot really commits with undoable: false')
+}
+
+H('comments undo like any edit (comments FOLLOW a restore)')
+{
+  const store = new Store(doc())
+  store.commit(d => { (d as any).comments = { c1: { id: 'c1', text: 'check this', author: 'Bob', at: 'x', replies: [],
+                                                     anchor: { block: d.body[0].id, from: 0, to: 4 } } } })
+  ok(!!(store.doc as any).comments?.c1, 'a comment is added')
+  ok(store.undo() && !(store.doc as any).comments?.c1, 'and undo removes it — history-class for copying, follows for undo')
+  ok(store.redo() && !!(store.doc as any).comments?.c1, 'redo brings it back')
+}
+
+H('restoring an older VERSION keeps every newer revision (back)')
+{
+  const store = new Store(doc())
+  const older = JSON.parse(JSON.stringify(store.doc)) as TypeDoc       // the version kept earlier
+  store.commit(d => { d.body[0].text = 'Payment is due within 60 days.' })
+  store.commit(d => { d.revisions.push(rev('r1', 'a')); d.revisions.push(rev('r2', 'b')) }, { undoable: false })
+  store.restore(older, 'back')
+  ok(store.doc.body[0].text === 'Payment is due within 30 days.', 'the older version\'s content comes back')
+  ok(store.doc.revisions.map(r => r.id).join() === 'r1,r2', 'and the revisions made since are KEPT, never discarded')
+  ok(store.doc.docId === older.docId, 'identity stays live')
+}
+
+H('crash recovery brings content AND history back TOGETHER (recover)')
+{
+  // The case that motivated the direction split: trim history, re-sign, crash
+  // before the file is written. The file still holds the long list; the
+  // snapshot holds the trimmed list and the NEW signature over it.
+  const k = await newKey()
+  const file = doc()
+  file.revisions = [rev('r1', 'a'), rev('r2', 'b'), rev('r3', 'c')]
+  file.signatures = [await sign(file, k, { name: 'Alice' })]
+  const snap = JSON.parse(JSON.stringify(file)) as TypeDoc
+  snap.revisions = [rev('r3', 'c')]                                     // trimmed…
+  snap.signatures = [await sign({ ...snap, signatures: [] }, k, { name: 'Alice' })]  // …and re-signed
+
+  const store = new Store(JSON.parse(JSON.stringify(file)))
+  const gated = gateRestored(JSON.stringify(snap), store.doc)!
+  store.restore(gated, 'recover')
+  ok(store.doc.revisions.map(r => r.id).join() === 'r3', 'the TRIMMED list comes back from the snapshot')
+  ok(store.doc.signatures.length === 1 && store.doc.signatures[0].sig === snap.signatures[0].sig,
+    'with the signature made over it — revisions and signatures are never split')
+  const v = await verifyChain(store.doc, store.doc.signatures)
+  ok(v.ok && v.entries[0].ok, 'so the re-signed signature VERIFIES after recovery')
+  ok(store.doc.docId === file.docId, 'identity still comes from the live file')
+  ok(store.undo() && store.doc.revisions.map(r => r.id).join() === 'r3',
+    'undo of the restore reverts content but keeps history live — going back never discards')
+}
+
+H('restoring an older version of a SIGNED document reports changed, and does not crash')
+{
+  const k = await newKey()
+  const store = new Store(doc())
+  const older = JSON.parse(JSON.stringify(store.doc)) as TypeDoc
+  store.commit(d => { d.body[0].text = 'Payment is due within 60 days.' })
+  const signed = await sign(store.doc, k, { name: 'Alice' })
+  store.commit(d => { d.signatures.push(signed) })
+  store.restore(older, 'back')
+  const v = await verifyChain(store.doc, store.doc.signatures)
+  ok(v.entries.length === 1 && !v.entries[0].ok,
+    'the live signature is kept and honestly reads changed — the content it signed is not what is open')
+}
+
+H('the recovery banner: warn and default to keeping the file, never hide (ruling 9)')
+{
+  const file = doc(); file.modified = '2026-06-01T12:00:00.000Z'
+  const older = { docId: file.docId, at: Date.parse('2026-06-01T09:00:00.000Z'), title: '', json: '{}' }
+  const newer = { ...older, at: Date.parse('2026-06-01T15:00:00.000Z') }
+  ok(recoveryBanner(older, file).older && recoveryBanner(older, file).defaultAction === 'keep',
+    'a copy that looks OLDER than the file warns, and keeping the file is the default')
+  ok(!recoveryBanner(newer, file).older && recoveryBanner(newer, file).defaultAction === 'restore',
+    'a newer-looking copy offers restore as before')
+  const unknown = doc(); delete (unknown as any).modified
+  ok(!recoveryBanner(older, unknown).older, 'an unknown age raises no warning — and nothing claims it is newer either')
+  const src = readFileSync(fileURLToPath(new URL('../type/src/autosave.ts', import.meta.url)), 'utf8')
+  ok(src.includes(`t("This recovered copy looks older than the file you opened. Keep the file unless you know it's newer.")`),
+    'the banner uses the ruled wording verbatim')
+  ok(src.includes(`t('Keep the file')`) && src.includes(`t('Restore anyway')`), 'with the ruled button labels')
+  ok(/ctx\.store\.restore\(gated, 'recover'\)/.test(src), 'and its Restore goes through the RECOVER direction')
+  ok(/onRecoveryOff\(docId => \{ if \(docId === ctx\.store\.doc\.docId\) showRecoveryOff\(\); \}\)/.test(src),
+    'the recovery-off notice is wired to the kernel\'s signal, for THIS document only')
+  ok(src.includes(`t("Crash recovery is off for this document — it's too large to keep a backup copy. Save often.")`),
+    'with the ruled wording verbatim')
+  const main = readFileSync(fileURLToPath(new URL('../type/src/main.ts', import.meta.url)), 'utf8')
+  ok(/store\.restore\(doc, 'back'\)/.test(main), 'About\'s version restore goes through the BACK direction')
+}
+
+H('the restore rules themselves')
+{
+  let threw = false; try { validateRestoreRules(RESTORE_RULES) } catch { threw = true }
+  ok(!threw, 'they pass the kernel\'s floor check at load')
+  ok((RESTORE_RULES.keepLive as Record<string, string>).comments === 'follows', 'comments follow a restore')
+  ok(Object.keys(RESTORE_RULES.keepLive ?? {}).join() === 'comments', 'and that is the ONLY override')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)

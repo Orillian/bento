@@ -465,4 +465,8 @@ export const zhHans: Catalog = {
   "Leave version history out": "不包含版本历史",
   "Versions include text that was deleted. This file keeps them either way.": "版本中包含已删除的文字。无论如何，此文件都会保留它们。",
   "Save invite…": "保存邀请…",
+  "This recovered copy looks older than the file you opened. Keep the file unless you know it's newer.": "这个恢复的副本似乎比你打开的文件旧。除非你确定它更新，否则请保留文件。",
+  "Restore anyway": "仍然恢复",
+  "Keep the file": "保留文件",
+  "Crash recovery is off for this document — it's too large to keep a backup copy. Save often.": "此文档的崩溃恢复已关闭——文档太大，无法保留备份副本。请经常保存。",
 }
