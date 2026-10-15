@@ -182,7 +182,7 @@ function showRecoveryBanner(ctx: FeatureContext, snap: Snapshot): void {
   const when = new Date(snap.at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' });
   const msg = document.createElement('span');
   msg.textContent = plan.older
-    ? t("This recovered copy looks older than the file you opened. Keep the file unless you know it's newer.")
+    ? t('This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.')
     : t('Unsaved changes from {when} were found.', { when });
   const restore = document.createElement('button');
   restore.className = plan.older ? 't-btn' : 't-btn t-primary';
@@ -235,7 +235,7 @@ function showRecoveryOff(): void {
   bar.className = 't-recover t-recover-off';
   bar.setAttribute('role', 'status');
   const msg = document.createElement('span');
-  msg.textContent = t("Crash recovery is off for this document — it's too large to keep a backup copy. Save often.");
+  msg.textContent = t('Crash recovery is off for this document — it’s too large to keep a backup copy. Save often.');
   const close = document.createElement('button');
   close.className = 't-btn';
   close.type = 'button';

@@ -323,13 +323,13 @@ H('the recovery banner: warn and default to keeping the file, never hide (ruling
   const unknown = doc(); delete (unknown as any).modified
   ok(!recoveryBanner(older, unknown).older, 'an unknown age raises no warning — and nothing claims it is newer either')
   const src = readFileSync(fileURLToPath(new URL('../type/src/autosave.ts', import.meta.url)), 'utf8')
-  ok(src.includes(`t("This recovered copy looks older than the file you opened. Keep the file unless you know it's newer.")`),
+  ok(src.includes(`t('This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.')`),
     'the banner uses the ruled wording verbatim')
   ok(src.includes(`t('Keep the file')`) && src.includes(`t('Restore anyway')`), 'with the ruled button labels')
   ok(/ctx\.store\.restore\(gated, 'recover'\)/.test(src), 'and its Restore goes through the RECOVER direction')
   ok(/onRecoveryOff\(docId => \{ if \(docId === ctx\.store\.doc\.docId\) showRecoveryOff\(\); \}\)/.test(src),
     'the recovery-off notice is wired to the kernel\'s signal, for THIS document only')
-  ok(src.includes(`t("Crash recovery is off for this document — it's too large to keep a backup copy. Save often.")`),
+  ok(src.includes(`t('Crash recovery is off for this document — it’s too large to keep a backup copy. Save often.')`),
     'with the ruled wording verbatim')
   const main = readFileSync(fileURLToPath(new URL('../type/src/main.ts', import.meta.url)), 'utf8')
   ok(/store\.restore\(doc, 'back'\)/.test(main), 'About\'s version restore goes through the BACK direction')
@@ -341,6 +341,26 @@ H('the restore rules themselves')
   ok(!threw, 'they pass the kernel\'s floor check at load')
   ok((RESTORE_RULES.keepLive as Record<string, string>).comments === 'follows', 'comments follow a restore')
   ok(Object.keys(RESTORE_RULES.keepLive ?? {}).join() === 'comments', 'and that is the ONLY override')
+}
+
+H('type\'s recovery store is its OWN, never the legacy shared one')
+{
+  // The kernel names the store `${appId}-autosave`, and copies the legacy
+  // shared `bento-autosave` into an EMPTY app store once. An app — or a rig —
+  // configured with appId 'bento' would BE the legacy store, and a test that
+  // deletes a snapshot could then pass against the wrong database.
+  const kernel = readFileSync(fileURLToPath(new URL('../kernel/src/autosave.ts', import.meta.url)), 'utf8')
+  ok(/const dbName = \(\) => `\$\{appConfig\(\)\.appId\}-autosave`/.test(kernel), 'the kernel derives the store name from the appId')
+  const legacy = /const LEGACY_DB_NAME = '([^']+)'/.exec(kernel)?.[1]
+  ok(legacy === 'bento-autosave', 'and the legacy shared store is bento-autosave')
+  const main = readFileSync(fileURLToPath(new URL('../type/src/main.ts', import.meta.url)), 'utf8')
+  const appId = /configureApp\(\{\s*appId: '([^']+)'/.exec(main)?.[1]
+  ok(appId === 'bento-type' && `${appId}-autosave` === 'bento-type-autosave',
+    'bento/type writes its recovery copies to bento-type-autosave')
+  ok(`${appId}-autosave` !== legacy, 'which is NOT the legacy shared store')
+  const self = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+  const rigId = /configureApp\(\{ appId: '([^']+)'/.exec(self)?.[1]
+  ok(!!rigId && `${rigId}-autosave` !== legacy, 'and neither does this rig')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)
