@@ -89,6 +89,25 @@ export const RESTORE_RULES: RestoreRules = {
 validateRestoreRules(RESTORE_RULES)
 
 /**
+ * The recovery banner's rules: RESTORE_RULES with `wholeSnapshot: true`,
+ * stated EXPLICITLY although the kernel (#716) defaults to it. The recovery
+ * snapshot is kernel autosave's `contentOnly(doc)` — the WHOLE document — so a
+ * content or unknown key absent from it is one the person REMOVED after the
+ * last save (a design, footnotes, a journal template), and it must stay
+ * removed rather than come back from the file. History is exempt in the
+ * kernel (an absent `trail`/`revisions` still keeps live), and the identity /
+ * mode / capability floor is unchanged. Only 'recover' reads the flag; every
+ * 'back' path already drops an absent field.
+ */
+export const RECOVER_RULES: RestoreRules = { ...RESTORE_RULES, wholeSnapshot: true }
+validateRestoreRules(RECOVER_RULES)
+
+/** The rules a direction restores by: the recovery banner's for 'recover'
+ *  (the only caller of that direction), the shared ones for 'back'. */
+export const rulesFor = (direction: RestoreDirection): RestoreRules =>
+  direction === 'recover' ? RECOVER_RULES : RESTORE_RULES
+
+/**
  * Undo and redo only. Their checkpoints OMIT `assets` (the largest thing in the
  * document, and unchanged by an ordinary edit — see `snapshot()`), and
  * `applyRestore` on 'back' reads an absent content field as DROPPED. Fed a
@@ -456,7 +475,7 @@ export class Store {
     this.dirty = true
     this.endRun()
     this.checkpoint()
-    this.doc = applyRestore(this.doc, next, direction, RESTORE_RULES, at)
+    this.doc = applyRestore(this.doc, next, direction, rulesFor(direction), at)
     this.reindex()
     this.pageId = homePage(next)?.id ?? ''
     this.emit('doc')

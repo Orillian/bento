@@ -24,7 +24,7 @@
 //     same html again, so what a reader SEES is what a file open shows;
 //   · identity and capability (store.ts FROM_LIVE: docId, collab, readonly,
 //     template) are the OPEN space's, never the snapshot's. That is decided by
-//     ONE call — the kernel's `applyRestore` over store.ts RESTORE_RULES —
+//     ONE call — the kernel's `applyRestore` over store.ts rulesFor(direction) —
 //     inside store.replaceDoc, AFTER this gate has run. `gateRestored` runs the
 //     same call only to SHOW what would be installed (the recovery check
 //     compares that); `restoreInto` hands the gated, not-yet-merged document
@@ -45,7 +45,7 @@
 
 import { parseDoc, docContentKey, type SpacesDoc } from './model.ts'
 import { sanitizeInline } from './sanitize.ts'
-import { RESTORE_RULES, restoreAt, type Store } from './store.ts'
+import { rulesFor, restoreAt, type Store } from './store.ts'
 import { applyRestore, type RestoreDirection } from '../../kernel/src/docfields.ts'
 
 /**
@@ -71,7 +71,7 @@ export function gateRestored(
 ): Gated {
   const g = gateOnly(json, live)
   if (!g.ok) return g
-  return { ok: true, doc: applyRestore(live, g.doc, direction, RESTORE_RULES, restoreAt(live, incomingAt)) }
+  return { ok: true, doc: applyRestore(live, g.doc, direction, rulesFor(direction), restoreAt(live, incomingAt)) }
 }
 
 /** The gate itself — bounded, prototype-safe, this space's docId, parseDoc,

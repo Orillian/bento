@@ -29,7 +29,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Store, RESTORE_RULES, restoreAt } from '../spaces/src/store.ts'
+import { Store, RESTORE_RULES, RECOVER_RULES, rulesFor, restoreAt } from '../spaces/src/store.ts'
 import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
 import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
 import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
@@ -88,6 +88,9 @@ console.log('0. the rules\n')
     'one recover hook is bound, on trail; revisions binds none')
   ok(RESTORE_RULES.recover!.trail === trailRecover, '…and it is trail.ts trailRecover')
   ok(!RESTORE_RULES.keepLive, 'no keepLive override in the shared rules (the undo-only assets override lives beside undo)')
+  ok(RECOVER_RULES.wholeSnapshot === true && rulesFor('recover') === RECOVER_RULES,
+    'the recovery banner passes wholeSnapshot: true EXPLICITLY (a recovery snapshot is the whole document)')
+  ok(rulesFor('back') === RESTORE_RULES && RESTORE_RULES.wholeSnapshot === undefined, '\'back\' paths use the shared rules, where the flag does not apply')
   const a = restoreAt(mk(), 123)
   ok(a.live === LIVE_MS && a.incoming === 123, 'restoreAt: live = Date.parse(modified), incoming = the snapshot\'s ms')
   const noMod = mk(); delete noMod.modified
@@ -252,6 +255,33 @@ console.log('\n5. crash recovery goes RECOVER\n')
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n5b. a recovery removes what was removed (wholeSnapshot)\n')
+{
+  // the file still has a design, footnotes, a journal template and a key from
+  // a newer build; the crash copy (taken after the person removed all four)
+  // has none of them, and carries no history at all
+  const live = mk({
+    design: 'ledger', footnotes: { 1: 'a note' }, journalTemplate: 't1', futureKey: { from: 'newer' },
+    revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }],
+  })
+  const snap = snapOf(mk())
+  delete snap.trail; delete snap.revisions
+  snap.pages[0].blocks[0].html = 'after removing them'
+  Object.assign(snap, { readonly: true, template: true, collab: FORGED.collab })
+  const s = new Store(live)
+  const histBefore = J([s.doc.trail, s.doc.revisions])
+  ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }), 'recoverInto applies the crash copy')
+  const d = s.doc as SpacesDoc & Obj
+  ok(!('design' in d) && !('footnotes' in d) && !('journalTemplate' in d),
+    'a design, footnotes and journal template REMOVED after the last save stay removed after recovery')
+  ok(!('futureKey' in d), 'an UNKNOWN top-level key absent from the snapshot is removed too')
+  ok(J([d.trail, d.revisions]) === histBefore, 'an absent trail / revisions in the snapshot still KEEPS the live history')
+  ok(identityLive(d), 'the identity / mode / capability floor is unchanged')
+  ok(!recoveryOffered(J(snapOf(live)), live, LIVE_MS + HOUR), 'a snapshot identical to the file still raises no banner')
+  ok(recoveryOffered(J(snap), live, LIVE_MS + HOUR), 'a snapshot that removed fields raises it')
+}
+
+// ---------------------------------------------------------------------------
 console.log('\n6. trailRecover: the four rows, and the edges\n')
 {
   const L: Trail = { '2026-09-10': row(5), '2026-09-11': row(6), '2026-09-14': row(9) }
@@ -389,6 +419,7 @@ console.log('\n8. every entry point names its direction\n')
   ok(!/keepLiveIdentity|keepLiveHistory/.test(store + gate), 'no hand-rolled keep-live remains in store.ts or restoregate.ts')
   ok(/applyRestore\(this\.doc, JSON\.parse\(entry\.json\) as SpacesDoc, 'back', UNDO_RULES\)/.test(store), 'undo/redo: one applyRestore, \'back\', with the undo-only rules')
   ok(/keepLive: \{ assets: 'live' \}/.test(store), '…whose only override is the assets pool')
+  ok(/RECOVER_RULES: RestoreRules = \{ \.\.\.RESTORE_RULES, wholeSnapshot: true \}/.test(store), 'the recovery rules state wholeSnapshot: true in source')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)

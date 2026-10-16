@@ -259,14 +259,34 @@ console.log('\na design is content, not identity\n')
   designedLive.design = 'ledger'
   const g2 = gateRestored(JSON.stringify(clone(live)), designedLive, 'back')
   ok(g2.ok && !Object.hasOwn(g2.doc, 'design'), 'restoring a version with no design does not keep the live design (it is content, not identity)')
-  // KERNEL GAP (pinned): on 'recover' the kernel's applyRestore reads an absent
-  // content field as "the snapshot is a projection" and KEEPS the live value,
-  // so a design removed after the last save is not removed by a recovery.
-  // Flip this row if the kernel ever makes recover's absent-content rule
-  // per-field.
-  const g2r = gateRestored(JSON.stringify(clone(live)), designedLive, 'recover', Date.now())
-  ok(g2r.ok && (g2r.doc as { design?: string }).design === 'ledger',
-    'KERNEL GAP (pinned): a recovery snapshot with no design keeps the live design (recover: absent never wipes)')
+  // A recovery removes what was removed (kernel #716, wholeSnapshot): the
+  // recovery snapshot is the whole document, so a design, footnotes and a
+  // journal template the person removed after the last save stay removed —
+  // through the banner's real path, recoverInto. (This row was pinned as a
+  // KERNEL GAP until #716.)
+  {
+    const fileDoc = clone(live) as SpacesDoc & Record<string, unknown>
+    fileDoc.design = 'ledger'
+    fileDoc.footnotes = { 1: 'a note' }
+    fileDoc.journalTemplate = 't1'
+    fileDoc.futureKey = { from: 'a newer build' }
+    fileDoc.trail = { '2026-09-10': { n: { todo: 1 } } }
+    fileDoc.revisions = [{ id: 'r0', at: '2026-09-10T00:00:00Z', body: {} }]
+    // the crash copy: all four removed, no history in it at all, forged modes
+    const crash = snapshotOf(live)
+    crash.pages[0].blocks[0].html = 'edited before the crash'
+    crash.readonly = true; crash.template = true
+    const s = new Store(fileDoc as SpacesDoc)
+    ok(recoverInto(s, { json: JSON.stringify(crash), at: Date.now() }), 'recovery of a snapshot with design/footnotes/journal template removed applies')
+    const d = s.doc as SpacesDoc & Record<string, unknown>
+    ok(!Object.hasOwn(d, 'design') && !Object.hasOwn(d, 'footnotes') && !Object.hasOwn(d, 'journalTemplate'),
+      'a design, footnotes and journal template REMOVED after the last save stay removed after recovery')
+    ok(!Object.hasOwn(d, 'futureKey'), 'an UNKNOWN top-level key absent from the snapshot is removed too')
+    ok(JSON.stringify(d.trail) === JSON.stringify(fileDoc.trail) && JSON.stringify(d.revisions) === JSON.stringify(fileDoc.revisions),
+      'an absent trail / revisions in the snapshot still KEEPS the live history')
+    ok(d.docId === live.docId && JSON.stringify(d.collab) === JSON.stringify(LIVE_COLLAB) && d.readonly === undefined && d.template === undefined,
+      'the identity / mode / capability floor is unchanged (collab live, forged readonly/template ignored)')
+  }
   // A PAGE's design (per-page designs) is content too: it lives in `pages`,
   // which the gate passes through and the content key already covers
   const paged = clone(live) as SpacesDoc
