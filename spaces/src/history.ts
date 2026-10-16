@@ -243,21 +243,30 @@ export function historyIsForeign(doc: SpacesDoc): boolean {
 /**
  * The `revisions` RECOVER HOOK (kernel docfields.ts `RecoverHook`), bound in
  * store.ts `RESTORE_RULES` and consulted only by the crash-recovery banner
- * ('recover'), only when the snapshot carries the key.
+ * ('recover'), only when the snapshot carries the key. In this ORDER:
  *
- * A readable recovered list FOLLOWS the snapshot — the crash case: a save's
- * revision written into the snapshot must survive. But a recovery snapshot is
- * foreign input (every file:// document shares the IndexedDB it lives in), and
- * without this hook a list holding even ONE entry this build cannot read
- * replaced the live, readable log. So the hook never merges and never picks
- * entries: a list that is not an array, or that has any entry failing
- * `readable` (the same check a file's list passes — `historyIsForeign`), is
- * refused WHOLE and the live value stands, exactly as a foreign list in a file
- * is never written over. With no live list, nothing is installed: returning
- * `undefined` leaves the key absent.
+ *   1. `[]` — CLEARED. restoregate.ts `asWholeRecovery` turns a snapshot with
+ *      NO `revisions` into `[]` before the kernel sees it (the snapshot is the
+ *      whole document, so absence means the person ran Clear history). Return
+ *      `undefined` so the key is REMOVED, exactly as Clear history deletes it
+ *      and never stores `[]`. Cleared stays cleared: otherwise drafts somebody
+ *      cleared before sharing came back with Restore and left in the next copy
+ *      — confidentiality beats integrity behind a banner the person accepted.
+ *   2. FOREIGN incoming — not an array, or any entry failing `readable` (the
+ *      check a file's list passes, `historyIsForeign`) → keep LIVE. A recovery
+ *      snapshot is foreign input (file:// documents share its IndexedDB); one
+ *      unreadable entry used to replace the live, readable log.
+ *   3. FOREIGN live → keep LIVE. A foreign list is never written over (#671),
+ *      which also preserves a newer build's history.
+ *   4. Otherwise the readable recovered list FOLLOWS the snapshot — the crash
+ *      case: a revision a save wrote into the snapshot must survive.
+ *
+ * It never merges and never picks entries: a list is taken or refused WHOLE.
  */
 export function revisionsRecover(live: unknown, incoming: unknown): unknown {
+  if (Array.isArray(incoming) && incoming.length === 0) return undefined
   if (!Array.isArray(incoming) || !incoming.every(readable)) return live
+  if (live !== undefined && (!Array.isArray(live) || !live.every(readable))) return live
   return incoming
 }
 

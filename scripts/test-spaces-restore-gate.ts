@@ -282,8 +282,8 @@ console.log('\na design is content, not identity\n')
     ok(!Object.hasOwn(d, 'design') && !Object.hasOwn(d, 'footnotes') && !Object.hasOwn(d, 'journalTemplate'),
       'a design, footnotes and journal template REMOVED after the last save stay removed after recovery')
     ok(!Object.hasOwn(d, 'futureKey'), 'an UNKNOWN top-level key absent from the snapshot is removed too')
-    ok(JSON.stringify(d.trail) === JSON.stringify(fileDoc.trail) && JSON.stringify(d.revisions) === JSON.stringify(fileDoc.revisions),
-      'an absent trail / revisions in the snapshot still KEEPS the live history')
+    ok(JSON.stringify(d.trail) === JSON.stringify(fileDoc.trail), 'an absent trail in the snapshot KEEPS the live rows ("no rows yet")')
+    ok(!Object.hasOwn(d, 'revisions'), 'an absent revisions in the (whole) snapshot means CLEARED: the key is removed')
     ok(d.docId === live.docId && JSON.stringify(d.collab) === JSON.stringify(LIVE_COLLAB) && d.readonly === undefined && d.template === undefined,
       'the identity / mode / capability floor is unchanged (collab live, forged readonly/template ignored)')
   }

@@ -786,6 +786,8 @@ export const ja: Catalog = {
   "Hidden — skipped while presenting and left out of PDF export": "非表示 — 発表中はスキップされ、PDF 書き出しにも含まれません",
   "Appearance": "外観",
   "Match my system": "システムに合わせる",
+  "Light mode": "ライトモード",
+  "Dark mode": "ダークモード",
   "Dark": "ダーク",
   "You saved a deck from here before.": "以前このページからデッキを保存しています。",
   "This page always starts fresh. Open your file to carry on with it:": "このページは常に新規から始まります。続きはファイルを開いてください:",

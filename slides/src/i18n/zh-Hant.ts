@@ -786,6 +786,8 @@ export const zhHant: Catalog = {
   "Hidden — skipped while presenting and left out of PDF export": "已隱藏 — 放映時略過，且不包含在 PDF 匯出中",
   "Appearance": "外觀",
   "Match my system": "跟隨系統",
+  "Light mode": "淺色模式",
+  "Dark mode": "深色模式",
   "Dark": "深色",
   "You saved a deck from here before.": "你之前曾從這裡儲存過一份簡報。",
   "This page always starts fresh. Open your file to carry on with it:": "此頁面總是從新建開始。開啟你的檔案以繼續編輯：",
