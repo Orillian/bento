@@ -161,8 +161,10 @@ try {
     const b = await bannerOf(p)
     ok(!!b && b.text === PLAIN, `${what}: spaces' plain banner ("${b?.text}")`)
     ok(!!b && !/newer|older|safe/i.test(b.text + ' ' + b.buttons.join(' ')), `${what}: it claims nothing about newer, older or safe`)
-    ok(!!b && b.buttons.join(' · ') === 'Restore · Discard' && b.primary.length === 0 && b.focused === null,
-      `${what}: its buttons are unchanged, no default, no focus taken (${b?.buttons.join(' · ')})`)
+    ok(!!b && b.buttons.join(' · ') === 'Restore · Discard', `${what}: Restore then Discard (${b?.buttons.join(' · ')})`)
+    // slides' default (lead ruling 2026-10-16): Restore primary and focused, Discard neither
+    ok(!!b && b.primary.join() === 'Restore' && b.focused === 'Restore',
+      `${what}: Restore is the one primary button and has focus (primary: ${b?.primary.join(', ') || 'none'}; focus: ${b?.focused})`)
     await ctx.close()
   }
 

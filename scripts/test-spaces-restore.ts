@@ -549,7 +549,11 @@ console.log('\n9. the recovery banner\'s words, and the recovery-off notice\n')
     const b = recoveryBanner(snapAt(at), live)
     ok(!b.older && b.text === PLAIN, `${what} snapshot: the plain banner ("${b.text}")`)
     ok(!/newer|older|safe/i.test(b.text + ' ' + labels(b)), `…claiming nothing about newer, older or safe (${labels(b)})`)
-    ok(labels(b) === 'Restore · Discard' && !b.buttons.some((x) => x.primary), `…with spaces' own neutral buttons (${labels(b)})`)
+    ok(labels(b) === 'Restore · Discard', `…with spaces' own buttons, Restore then Discard (${labels(b)})`)
+    // slides' default (lead ruling 2026-10-16): Restore is the one primary
+    const bp = b.buttons.filter((x) => x.primary)
+    ok(bp.length === 1 && bp[0].action === 'restore' && !b.buttons.find((x) => x.action === 'discard')?.primary,
+      `…Restore is the ONE default, Discard is not (${bp.map((x) => x.label).join(', ') || 'none'})`)
   }
   // #705's rule: unknown either side says nothing
   const noMod = mk(); delete (noMod as Obj).modified

@@ -13,7 +13,8 @@
 // the banner still offers the snapshot ("Restore anyway"), "Keep the file" is
 // the primary button and takes focus, and keeping the file deletes NOTHING —
 // a clock-skewed "older" must never cost work. With no signal the banner is the
-// plain one and claims nothing about "newer" or "safe".
+// plain one, with Restore its default, and claims nothing about "newer" or
+// "safe".
 //
 // THE RECOVERY-OFF NOTICE. Under a host with a per-document store (bento/home),
 // the kernel fires onRecoveryOff once per document when the host refuses the
@@ -54,11 +55,14 @@ export function recoveryBanner(snap: Snapshot, doc: { modified?: string | number
       ],
     }
   }
+  // The plain banner's default is Restore, as slides' is (lead ruling,
+  // 2026-10-16): a primary button is the expected recovery action, not a claim
+  // that the copy is newer or safe — the text still claims neither.
   return {
     older,
     text: t('Unsaved changes from a previous session were found.'),
     buttons: [
-      { label: t('Restore'), action: 'restore' },
+      { label: t('Restore'), action: 'restore', primary: true },
       { label: t('Discard'), action: 'discard' },
     ],
   }

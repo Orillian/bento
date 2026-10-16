@@ -1354,8 +1354,9 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   opened. Keep the file unless you know it’s newer." **Keep the file** is the
   default and has focus. It closes the banner and deletes nothing, because two
   devices' clocks can disagree. **Restore anyway** still brings the copy back.
-  When the copy is not older, the banner is the plain one it always was. The
-  words and behaviour match bento/slides.
+  When the copy is not older, the banner keeps its usual wording, and
+  **Restore** is now its default button. The words and behaviour match
+  bento/slides.
 - **Spaces says when crash recovery is off.** When bento/home declines to keep
   a recovery copy because the space is too large, the save status says "Crash
   recovery is off for this space — it’s too large to keep a backup copy. Save
