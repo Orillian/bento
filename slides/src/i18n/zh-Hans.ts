@@ -786,6 +786,8 @@ export const zhHans: Catalog = {
   "Hidden — skipped while presenting and left out of PDF export": "已隐藏 — 放映时跳过，且不包含在 PDF 导出中",
   "Appearance": "外观",
   "Match my system": "跟随系统",
+  "Light mode": "浅色模式",
+  "Dark mode": "深色模式",
   "Dark": "深色",
   "You saved a deck from here before.": "你之前从这里保存过一份幻灯片。",
   "This page always starts fresh. Open your file to carry on with it:": "此页面总是从新建开始。打开你的文件继续编辑：",
