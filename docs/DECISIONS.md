@@ -10368,17 +10368,26 @@ choices are dash's and are recorded because a later change could undo them:
 
 Every whole-document restore in bento/spaces now resolves through the kernel's
 `applyRestore` (`kernel/src/docfields.ts`) over one rule set,
-`spaces/src/store.ts` `RESTORE_RULES` = the field-class map plus one recover
-hook, on `trail`. The hand-rolled keep-live in `store.ts` and
+`spaces/src/store.ts` `RESTORE_RULES` = the field-class map plus two recover
+hooks, on `trail` and `revisions`. The hand-rolled keep-live in `store.ts` and
 `restoregate.ts` is gone. Each entry point names its direction:
 
 - **'back'** — undo, redo, a version restore from either timeline, Replace
   from JSON and `bento.loadDoc`. Content follows. Identity, modes, capability
   and history keep the live value, so a paste or a version can neither delete
   this space's history nor install one.
-- **'recover'** — the crash-recovery banner only. `revisions` binds no hook:
-  it follows the snapshot when the snapshot has it, and is kept when it does
-  not. `trail` goes through `trail.ts` `trailRecover`.
+- **'recover'** — the crash-recovery banner only. `revisions` goes through
+  `history.ts` `revisionsRecover`. A readable recovered list follows the
+  snapshot, which is the crash case: a revision the last save wrote must
+  survive. A list that is not an array, or that has even one entry failing
+  `readable`, is refused whole, and the live list stands. That entry check is
+  the same one a file's list passes (`historyIsForeign`). If there is no live
+  list, the key stays absent. The hook never merges and never picks entries.
+  It applies the rule from #671, that a foreign list is never written over, to
+  a recovery snapshot, which is foreign input. Without the hook, one
+  unreadable entry replaced the live, readable log. A snapshot with no
+  `revisions` keeps the live list. `trail` goes through `trail.ts`
+  `trailRecover`.
 
 `trailRecover` keeps a day found on one side only. A day on both sides goes
 to the side whose whole document is later: the snapshot's `at` against the
@@ -10413,4 +10422,5 @@ Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - the hook returning the snapshot's trail wholesale;
 - the span drop removed;
 - the undo assets override removed;
-- `wholeSnapshot: false` on the recovery path.
+- `wholeSnapshot: false` on the recovery path;
+- the revisions hook unbound, or returning the snapshot's list.

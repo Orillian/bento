@@ -240,6 +240,27 @@ export function historyIsForeign(doc: SpacesDoc): boolean {
   return !Array.isArray(r) || !r.every(readable)
 }
 
+/**
+ * The `revisions` RECOVER HOOK (kernel docfields.ts `RecoverHook`), bound in
+ * store.ts `RESTORE_RULES` and consulted only by the crash-recovery banner
+ * ('recover'), only when the snapshot carries the key.
+ *
+ * A readable recovered list FOLLOWS the snapshot — the crash case: a save's
+ * revision written into the snapshot must survive. But a recovery snapshot is
+ * foreign input (every file:// document shares the IndexedDB it lives in), and
+ * without this hook a list holding even ONE entry this build cannot read
+ * replaced the live, readable log. So the hook never merges and never picks
+ * entries: a list that is not an array, or that has any entry failing
+ * `readable` (the same check a file's list passes — `historyIsForeign`), is
+ * refused WHOLE and the live value stands, exactly as a foreign list in a file
+ * is never written over. With no live list, nothing is installed: returning
+ * `undefined` leaves the key absent.
+ */
+export function revisionsRecover(live: unknown, incoming: unknown): unknown {
+  if (!Array.isArray(incoming) || !incoming.every(readable)) return live
+  return incoming
+}
+
 /** `doc.revisions`, when this build can read every entry of it; else none. */
 export function revisionsOf(doc: SpacesDoc): SpacesRevision[] {
   const r = (doc as { revisions?: unknown }).revisions

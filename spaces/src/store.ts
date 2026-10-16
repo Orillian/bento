@@ -20,6 +20,7 @@ import {
 } from '../../kernel/src/docfields.ts'
 import { SPACES_FIELDS } from './docclass.ts'
 import { trailRecover } from './trail.ts'
+import { revisionsRecover } from './history.ts'
 
 type Listener = () => void
 type Event = 'doc' | 'page' | 'tree' | 'selection' | 'dirty'
@@ -74,17 +75,19 @@ export { FROM_LIVE }
  *               pasted or restored document could INSTALL a forged one.
  *   'recover' — the crash-recovery banner only. The snapshot is a NEWER copy of
  *               this space, so history is reconciled with it rather than kept:
- *               `revisions` (no hook) follows the snapshot when it carries the
- *               field and keeps live when it does not; `trail` unions by day
- *               (trail.ts `trailRecover`). Content absent from the snapshot
- *               never wipes the live value.
+ *               `revisions` follows the snapshot when it carries a READABLE
+ *               list and keeps live when it does not (history.ts
+ *               `revisionsRecover` refuses a foreign list whole); `trail`
+ *               unions by day (trail.ts `trailRecover`). Content absent from
+ *               the snapshot was removed and stays removed (RECOVER_RULES,
+ *               wholeSnapshot); history absent from it keeps live.
  *
  * Identity, mode and capability are live in BOTH directions; the kernel's floor
  * holds that even against a mistaken override.
  */
 export const RESTORE_RULES: RestoreRules = {
   classes: SPACES_FIELDS,
-  recover: { trail: trailRecover },
+  recover: { trail: trailRecover, revisions: revisionsRecover },
 }
 validateRestoreRules(RESTORE_RULES)
 

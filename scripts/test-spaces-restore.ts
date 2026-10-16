@@ -33,7 +33,7 @@ import { Store, RESTORE_RULES, RECOVER_RULES, rulesFor, restoreAt } from '../spa
 import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
 import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
 import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
-import { recordRevision, restoredDoc, revisionsOf } from '../spaces/src/history.ts'
+import { recordRevision, restoredDoc, revisionsOf, revisionsRecover } from '../spaces/src/history.ts'
 
 let checks = 0
 let failures = 0
@@ -84,9 +84,11 @@ console.log('bento/spaces whole-document restore, by direction\n')
 // ---------------------------------------------------------------------------
 console.log('0. the rules\n')
 {
-  ok(RESTORE_RULES.recover !== undefined && Object.keys(RESTORE_RULES.recover).join() === 'trail',
-    'one recover hook is bound, on trail; revisions binds none')
-  ok(RESTORE_RULES.recover!.trail === trailRecover, '…and it is trail.ts trailRecover')
+  ok(RESTORE_RULES.recover !== undefined && Object.keys(RESTORE_RULES.recover).sort().join() === 'revisions,trail',
+    'two recover hooks are bound: trail and revisions')
+  ok(RESTORE_RULES.recover!.trail === trailRecover && RESTORE_RULES.recover!.revisions === revisionsRecover,
+    '…trail.ts trailRecover and history.ts revisionsRecover')
+  ok(RECOVER_RULES.recover === RESTORE_RULES.recover, '…and the recovery rules carry the same hooks')
   ok(!RESTORE_RULES.keepLive, 'no keepLive override in the shared rules (the undo-only assets override lives beside undo)')
   ok(RECOVER_RULES.wholeSnapshot === true && rulesFor('recover') === RECOVER_RULES,
     'the recovery banner passes wholeSnapshot: true EXPLICITLY (a recovery snapshot is the whole document)')
@@ -231,12 +233,49 @@ console.log('\n5. crash recovery goes RECOVER\n')
   snap.pages[0].blocks[0].html = 'x'
   const s = new Store(live)
   ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }) && J(s.doc.revisions) === J(snap.revisions),
-    'revisions FOLLOW the snapshot when it carries them (no hook bound)')
+    'revisions FOLLOW the snapshot when it carries a READABLE list')
   const live2 = mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }] })
   const snap2 = snapOf(live2); delete snap2.revisions; snap2.pages[0].blocks[0].html = 'y'
   const s2 = new Store(live2)
   ok(recoverInto(s2, { json: J(snap2), at: LIVE_MS + HOUR }) && J(s2.doc.revisions) === J(live2.revisions),
     'revisions are KEPT when the snapshot has none (absent never wipes on recover)')
+}
+{
+  // a recovery snapshot is foreign input: a list with ONE entry this build
+  // cannot read must not replace the live, readable log (revisionsRecover)
+  const LIVE_REVS = [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }, { id: 'r1', at: '2026-09-02T00:00:00Z', body: { a: 2 } }]
+  const good = (id: string, at: string) => ({ id, at, body: { a: 3 } })
+  const cases: Array<[string, unknown]> = [
+    ['ONE entry missing its body beside valid ones', [...LIVE_REVS, good('r2', '2026-09-15T13:00:00Z'), { id: 'bad', at: '2026-09-15T14:00:00Z' }]],
+    ['ONE entry with a bad `at` beside valid ones', [good('r2', '2026-09-15T13:00:00Z'), { id: 'bad', at: 42, body: {} }]],
+    ['ONE entry with an unreadable page patch', [good('r2', '2026-09-15T13:00:00Z'), { id: 'bad', at: '2026-09-15T14:00:00Z', body: { pages: [{ put: 'x' }] } }]],
+    ['`revisions` that is not an array', { r0: good('r0', '2026-09-15T13:00:00Z') }],
+  ]
+  for (const [what, revs] of cases) {
+    const live = mk({ revisions: clone(LIVE_REVS), trail: { '2026-09-10': row(5) } })
+    const before = J(live.revisions)
+    const snap = snapOf(live)
+    snap.revisions = revs
+    snap.trail = { '2026-09-12': row(7) }
+    snap.pages[0].blocks[0].html = 'recovered anyway'
+    const s = new Store(live)
+    ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }), `foreign revisions (${what}): the recovery still applies`)
+    ok(J(s.doc.revisions) === before, `…the LIVE list is kept byte-for-byte`)
+    ok(text(s.doc) === 'recovered anyway' && J(Object.keys(s.doc.trail as Obj).sort()) === J(['2026-09-10', '2026-09-12']),
+      '…while the content and the trail merge still apply')
+  }
+  {
+    // no live list + a foreign incoming one: nothing is installed
+    const live = mk()
+    const snap = snapOf(live)
+    snap.revisions = [{ id: 'bad', at: 7 }]
+    snap.pages[0].blocks[0].html = 'no history here'
+    const s = new Store(live)
+    ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }) && text(s.doc) === 'no history here', 'live with no revisions + a foreign recovered list: the recovery applies')
+    ok(!Object.hasOwn(s.doc, 'revisions'), '…and the revisions key stays ABSENT')
+  }
+  ok(revisionsRecover(undefined, [{ id: 'x' }]) === undefined && revisionsRecover(LIVE_REVS, 'junk') === LIVE_REVS,
+    'revisionsRecover refuses a foreign list WHOLE and never merges')
 }
 {
   // trail through the real banner path: the hook unions by day
@@ -420,6 +459,7 @@ console.log('\n8. every entry point names its direction\n')
   ok(/applyRestore\(this\.doc, JSON\.parse\(entry\.json\) as SpacesDoc, 'back', UNDO_RULES\)/.test(store), 'undo/redo: one applyRestore, \'back\', with the undo-only rules')
   ok(/keepLive: \{ assets: 'live' \}/.test(store), '…whose only override is the assets pool')
   ok(/RECOVER_RULES: RestoreRules = \{ \.\.\.RESTORE_RULES, wholeSnapshot: true \}/.test(store), 'the recovery rules state wholeSnapshot: true in source')
+  ok(/recover: \{ trail: trailRecover, revisions: revisionsRecover \}/.test(store), 'both recover hooks are bound in source')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)
