@@ -786,6 +786,8 @@ export const fr: Catalog = {
   "Hidden — skipped while presenting and left out of PDF export": "Masquée — ignorée pendant la présentation et absente de l’export PDF",
   "Appearance": "Apparence",
   "Match my system": "Comme le système",
+  "Light mode": "Mode clair",
+  "Dark mode": "Mode sombre",
   "Dark": "Sombre",
   "You saved a deck from here before.": "Vous avez déjà enregistré un deck depuis cette page.",
   "This page always starts fresh. Open your file to carry on with it:": "Cette page recommence toujours à zéro. Ouvrez votre fichier pour le poursuivre :",
