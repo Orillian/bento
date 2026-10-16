@@ -34,6 +34,9 @@ import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
 import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
 import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
 import { recordRevision, restoredDoc, revisionsOf, revisionsRecover } from '../spaces/src/history.ts'
+import { recoveryBanner, wireRecoveryOff, type RecoveryBanner } from '../spaces/src/recoverynotice.ts'
+import { putRecovery, recoveryOff } from '../kernel/src/autosave.ts'
+import { resetDocStoreForTest, type DocStore } from '../kernel/src/docstore.ts'
 
 let checks = 0
 let failures = 0
@@ -460,6 +463,101 @@ console.log('\n8. every entry point names its direction\n')
   ok(/keepLive: \{ assets: 'live' \}/.test(store), '…whose only override is the assets pool')
   ok(/RECOVER_RULES: RestoreRules = \{ \.\.\.RESTORE_RULES, wholeSnapshot: true \}/.test(store), 'the recovery rules state wholeSnapshot: true in source')
   ok(/recover: \{ trail: trailRecover, revisions: revisionsRecover \}/.test(store), 'both recover hooks are bound in source')
+}
+
+// ---------------------------------------------------------------------------
+// The maintainer's two recovery notices (2026-10-15, shared with slides and
+// type): an older-looking snapshot WARNS but is still offered, with "Keep the
+// file" the default; a refused recovery copy is said ONCE per space, never for
+// an encrypted one. recoverynotice.ts decides both; the kernel supplies the
+// signals (recoveryLooksOlder, onRecoveryOff). The browser half — focus, the
+// planted snapshot, a refusing host — is test-spaces-recovery-browser.mjs.
+console.log('\n9. the recovery banner\'s words, and the recovery-off notice\n')
+{
+  const OLDER = 'This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.'
+  const PLAIN = 'Unsaved changes from a previous session were found.'
+  const snapAt = (at: number) => ({ docId: 'space-R', at, title: 'R', json: J(snapOf(mk())) })
+  const live = mk()
+  const labels = (b: RecoveryBanner) => b.buttons.map((x) => x.label).join(' · ')
+
+  const o = recoveryBanner(snapAt(LIVE_MS - HOUR), live)
+  ok(o.older && o.text === OLDER, `an older snapshot: the banner warns ("${o.text}")`)
+  ok(labels(o) === 'Keep the file · Restore anyway', `…offering "Keep the file" then "Restore anyway" (${labels(o)})`)
+  const prim = o.buttons.filter((b) => b.primary)
+  ok(prim.length === 1 && prim[0].action === 'keep', `…with "Keep the file" the ONE default (${prim.map((b) => b.label).join(', ') || 'none'})`)
+  ok(o.buttons.find((b) => b.label === 'Restore anyway')?.action === 'restore', '…and "Restore anyway" still restores: the older snapshot is never hidden')
+  ok(!o.buttons.some((b) => b.action === 'discard'), '…and nothing on it deletes the snapshot (a skewed clock must never cost work)')
+  {
+    // through the real restore: "Restore anyway" installs the snapshot's text
+    const s = new Store(mk())
+    const old = snapOf(mk()); old.pages[0].blocks[0].html = 'from the crash'
+    ok(recoverInto(s, { json: J(old), at: LIVE_MS - HOUR }) && text(s.doc) === 'from the crash', '"Restore anyway" → recoverInto installs the older snapshot')
+  }
+
+  for (const [at, what] of [[LIVE_MS + HOUR, 'a newer'], [LIVE_MS, 'an equal-time']] as const) {
+    const b = recoveryBanner(snapAt(at), live)
+    ok(!b.older && b.text === PLAIN, `${what} snapshot: the plain banner ("${b.text}")`)
+    ok(!/newer|older|safe/i.test(b.text + ' ' + labels(b)), `…claiming nothing about newer, older or safe (${labels(b)})`)
+    ok(labels(b) === 'Restore · Discard' && !b.buttons.some((x) => x.primary), `…with spaces' own neutral buttons (${labels(b)})`)
+  }
+  // #705's rule: unknown either side says nothing
+  const noMod = mk(); delete (noMod as Obj).modified
+  const nm = recoveryBanner(snapAt(LIVE_MS - 1000 * HOUR), noMod)
+  ok(!nm.older && nm.text === PLAIN, 'a file with no `modified`: no warning, the plain banner (kernel: unknown → false)')
+  const badMod = recoveryBanner(snapAt(LIVE_MS - HOUR), mk({ modified: 'not a date' }))
+  ok(!badMod.older && badMod.text === PLAIN, 'an unreadable `modified`: no warning either')
+}
+{
+  // the notice, fired by the REAL kernel: a host whose per-document store
+  // refuses the recovery copy (docstore.ts), as bento/home does when too large
+  const said: string[] = []
+  let docId = 'space-off', encrypted = false
+  const refusing: DocStore = {
+    async get() { return null },
+    async set() { return 'refused' as const },
+    async list() { return [] },
+    async delete() { return true },
+  }
+  resetDocStoreForTest(refusing)
+  const off = wireRecoveryOff({ docId: () => docId, encrypted: () => encrypted, say: (m) => said.push(m) })
+  const NOTICE = 'Crash recovery is off for this space — it’s too large to keep a backup copy. Save often.'
+  const kdoc = (id: string) => ({ ...snapOf(mk()), docId: id }) as unknown as Parameters<typeof putRecovery>[0]
+  await putRecovery(kdoc('space-off'))
+  ok(said.length === 1 && said[0] === NOTICE, `a refused recovery copy: the notice, in the save status ("${said[0] ?? ''}")`)
+  ok(recoveryOff('space-off'), '…and the kernel agrees recovery is off for the space')
+  await putRecovery(kdoc('space-off'))
+  ok(said.length === 1, `…said ONCE: the next autosave stays quiet (${said.length})`)
+  await putRecovery(kdoc('space-other'))
+  ok(said.length === 1, `another space's refusal says nothing here (${said.length})`)
+  off()
+  resetDocStoreForTest(null)
+
+  // the app's own guard, fired twice for the same space (the kernel fires once,
+  // so this is what holds if it ever fires again)
+  type Fn = (id: string, reason: string) => void
+  const fns: Fn[] = []
+  const sub = (fn: Fn) => { fns.push(fn); return () => {} }
+  const twice: string[] = []
+  docId = 'space-twice'
+  wireRecoveryOff({ docId: () => docId, encrypted: () => encrypted, say: (m) => twice.push(m), subscribe: sub })
+  ok(fns.length === 1, 'the notice registers a listener')
+  fns.forEach((f) => f('space-twice', 'r')); fns.forEach((f) => f('space-twice', 'r'))
+  ok(twice.length === 1, `fired twice for one space: said once (${twice.length})`)
+  fns.forEach((f) => f('space-elsewhere', 'r'))
+  ok(twice.length === 1, 'fired for another docId: nothing')
+  const enc: string[] = []
+  const fns2: Fn[] = []
+  encrypted = true; docId = 'space-enc'
+  wireRecoveryOff({ docId: () => docId, encrypted: () => encrypted, say: (m) => enc.push(m), subscribe: (fn: Fn) => { fns2.push(fn); return () => {} } })
+  fns2.forEach((f) => f('space-enc', 'r'))
+  ok(enc.length === 0, 'an encrypted space: nothing (it was never snapshotted)')
+
+  const main = readFileSync(join(process.cwd(), 'spaces/src/main.ts'), 'utf8')
+  ok(/wireRecoveryOff\(\{\s*docId: \(\) => store\.doc\.docId,\s*encrypted: isEncryptionActive,\s*say: \(msg\) => editor\.status\(msg, 8000\),?\s*\}\)/.test(main),
+    'main.ts registers the notice for the open space, encryption-aware, in the save status for 8s')
+  ok(/const spec = recoveryBanner\(snap, store\.doc\)[\s\S]{0,1200}?banner\(spec\.text, spec\.buttons\.map\(\(b\) => \[b\.label, run\[b\.action\], b\.primary\]\)\)/.test(main),
+    'the recovery banner shows what recoveryBanner says, primary and all')
+  ok(/keep: \(\) => \{\}/.test(main), '"Keep the file" deletes nothing')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)

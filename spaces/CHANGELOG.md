@@ -1348,6 +1348,18 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   when one copy has thinned older days into weekly or monthly rows. Version
   history comes back with the recovered copy. Undo, restoring a version and
   pasting document JSON still leave both records exactly as they are.
+- **The recovery banner warns when the recovered copy looks older than the
+  file.** It now says "This recovered copy looks older than the file you
+  opened. Keep the file unless you know it’s newer." **Keep the file** is the
+  default and has focus. It closes the banner and deletes nothing, because two
+  devices' clocks can disagree. **Restore anyway** still brings the copy back.
+  When the copy is not older, the banner is the plain one it always was. The
+  words and behaviour match bento/slides.
+- **Spaces says when crash recovery is off.** When bento/home declines to keep
+  a recovery copy because the space is too large, the save status says "Crash
+  recovery is off for this space — it’s too large to keep a backup copy. Save
+  often." It says so once per space, and never for an encrypted space, which
+  never keeps a recovery copy.
 
 ## [0.1.0] — 2026-08-03
 
