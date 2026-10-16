@@ -10448,17 +10448,34 @@ hooks, on `trail` and `revisions`. The hand-rolled keep-live in `store.ts` and
   and history keep the live value, so a paste or a version can neither delete
   this space's history nor install one.
 - **'recover'** — the crash-recovery banner only. `revisions` goes through
-  `history.ts` `revisionsRecover`. A readable recovered list follows the
-  snapshot, which is the crash case: a revision the last save wrote must
-  survive. A list that is not an array, or that has even one entry failing
-  `readable`, is refused whole, and the live list stands. That entry check is
-  the same one a file's list passes (`historyIsForeign`). If there is no live
-  list, the key stays absent. The hook never merges and never picks entries.
-  It applies the rule from #671, that a foreign list is never written over, to
-  a recovery snapshot, which is foreign input. Without the hook, one
-  unreadable entry replaced the live, readable log. A snapshot with no
-  `revisions` keeps the live list. `trail` goes through `trail.ts`
-  `trailRecover`.
+  `history.ts` `revisionsRecover`, which applies these rules in order:
+  1. `[]` means the list was cleared. The hook returns `undefined`, so the
+     key is removed, just as Clear history deletes it rather than storing
+     `[]`.
+  2. A recovered list that is not an array, or that has even one entry
+     failing `readable`, is refused whole, and the live list stands. That
+     entry check is the same one a file's list passes (`historyIsForeign`).
+     A recovery snapshot is foreign input, and before this rule one
+     unreadable entry replaced the live, readable log.
+  3. A foreign live list is never written over (#671). This also keeps a
+     newer build's history intact.
+  4. Otherwise the readable recovered list follows the snapshot. This is the
+     crash case: a revision the last save wrote must survive.
+
+  The hook never merges and never picks entries.
+
+  **Cleared stays cleared.** The recovery snapshot is the whole document, so
+  a snapshot with no `revisions` means the person ran Clear history. Without
+  the rule below, Restore on the banner brought the cleared drafts back, and
+  the next copy the person shared carried them. That is a confidentiality
+  bug: here confidentiality wins over integrity, behind a banner the person
+  chose to accept. The kernel keeps an absent history key live before any
+  hook runs. That is deliberate, it holds even under `wholeSnapshot`, and the
+  kernel is not this app's to change. So the hook never sees the absence.
+  Instead, `restoregate.ts` `asWholeRecovery` states it as `revisions: []` on
+  the 'recover' path only, before `applyRestore`. `trail` is not normalised:
+  in a whole snapshot, no trail means "no rows yet", and the day-union already
+  keeps the live rows. `trail` goes through `trail.ts` `trailRecover`.
 
 `trailRecover` keeps a day found on one side only. A day on both sides goes
 to the side whose whole document is later: the snapshot's `at` against the
@@ -10483,9 +10500,10 @@ spaces call still states it, because the recovery snapshot is
 `contentOnly(doc)`, the whole document. So a content key or an unknown
 top-level key missing from the snapshot was deleted by the person, and it
 stays deleted after recovery. That covers a design, footnotes or a journal
-template removed after the last save. History is the exception: a snapshot
-with no `trail` or `revisions` still keeps the live value. The identity, mode
-and capability floor is unchanged.
+template removed after the last save. History follows its own rules. A
+snapshot with no `trail` keeps the live rows. A snapshot with no `revisions`
+means they were cleared, as described above. The identity, mode and
+capability floor is unchanged.
 
 Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - recovery passed as 'back';
@@ -10494,4 +10512,7 @@ Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - the span drop removed;
 - the undo assets override removed;
 - `wholeSnapshot: false` on the recovery path;
-- the revisions hook unbound, or returning the snapshot's list.
+- the revisions hook unbound, or returning the snapshot's list;
+- the absent-to-`[]` normalisation removed;
+- the hook keeping live for `[]`;
+- rule 3 (a foreign live list is kept) dropped.

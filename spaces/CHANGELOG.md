@@ -1346,7 +1346,8 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   day recorded in either the file or the recovered copy is kept. If both have
   the same day, the newer copy's reading wins. A day is never counted twice
   when one copy has thinned older days into weekly or monthly rows. Version
-  history comes back with the recovered copy. Undo, restoring a version and
+  history comes back with the recovered copy. If you cleared the version
+  history before the crash, it stays cleared. Undo, restoring a version and
   pasting document JSON still leave both records exactly as they are.
 
 ## [0.1.0] — 2026-08-03

@@ -71,7 +71,30 @@ export function gateRestored(
 ): Gated {
   const g = gateOnly(json, live)
   if (!g.ok) return g
-  return { ok: true, doc: applyRestore(live, g.doc, direction, rulesFor(direction), restoreAt(live, incomingAt)) }
+  const incoming = direction === 'recover' ? asWholeRecovery(g.doc) : g.doc
+  return { ok: true, doc: applyRestore(live, incoming, direction, rulesFor(direction), restoreAt(live, incomingAt)) }
+}
+
+/**
+ * The recovery path only ('recover', RECOVER_RULES — the whole-snapshot
+ * path): a snapshot with NO `revisions` means the person CLEARED them.
+ *
+ * The snapshot is kernel autosave's `contentOnly(doc)`, the WHOLE document, so
+ * a missing key is a deleted one. The kernel, by design, keeps an ABSENT
+ * history field live before any hook runs ("absent never wipes a history
+ * field", even under wholeSnapshot) — so the hook can never see the absence,
+ * and without this Restore brought back drafts Clear history had removed. The
+ * absence is therefore stated as `[]`, which history.ts `revisionsRecover`
+ * reads as "cleared" and answers by removing the key. Normalised here rather
+ * than in the hook because the hook is never called for an absent key, and the
+ * kernel is not ours to change.
+ *
+ * `trail` is NOT normalised: a whole snapshot with no trail means "no rows
+ * yet", which the day-union already handles by keeping the live rows.
+ */
+export function asWholeRecovery(doc: SpacesDoc): SpacesDoc {
+  if ((doc as { revisions?: unknown }).revisions !== undefined) return doc
+  return { ...doc, revisions: [] } as SpacesDoc
 }
 
 /** The gate itself — bounded, prototype-safe, this space's docId, parseDoc,
@@ -133,7 +156,9 @@ export function restoreInto(store: Store, json: unknown, direction: RestoreDirec
   if (store.readOnly) return false
   const g = gateOnly(json, store.doc)
   if (!g.ok) return false
-  store.replaceDoc(g.doc, direction, restoreAt(store.doc, incomingAt))
+  // 'recover' is the whole-snapshot path: an absent `revisions` was cleared
+  const incoming = direction === 'recover' ? asWholeRecovery(g.doc) : g.doc
+  store.replaceDoc(incoming, direction, restoreAt(store.doc, incomingAt))
   return true
 }
 

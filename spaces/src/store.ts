@@ -76,11 +76,13 @@ export { FROM_LIVE }
  *   'recover' — the crash-recovery banner only. The snapshot is a NEWER copy of
  *               this space, so history is reconciled with it rather than kept:
  *               `revisions` follows the snapshot when it carries a READABLE
- *               list and keeps live when it does not (history.ts
- *               `revisionsRecover` refuses a foreign list whole); `trail`
- *               unions by day (trail.ts `trailRecover`). Content absent from
- *               the snapshot was removed and stays removed (RECOVER_RULES,
- *               wholeSnapshot); history absent from it keeps live.
+ *               list, is REMOVED when the snapshot has none (a whole snapshot
+ *               without it was CLEARED — restoregate.ts asWholeRecovery), and
+ *               a foreign list on either side keeps live (history.ts
+ *               `revisionsRecover`); `trail` unions by day (trail.ts
+ *               `trailRecover`), so an absent trail keeps the live rows.
+ *               Content absent from the snapshot was removed and stays removed
+ *               (RECOVER_RULES, wholeSnapshot).
  *
  * Identity, mode and capability are live in BOTH directions; the kernel's floor
  * holds that even against a mistaken override.

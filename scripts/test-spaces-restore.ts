@@ -31,9 +31,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Store, RESTORE_RULES, RECOVER_RULES, rulesFor, restoreAt } from '../spaces/src/store.ts'
 import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
-import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
+import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored, asWholeRecovery } from '../spaces/src/restoregate.ts'
 import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
-import { recordRevision, restoredDoc, revisionsOf, revisionsRecover } from '../spaces/src/history.ts'
+import { recordRevision, restoredDoc, revisionsOf, revisionsRecover, clearHistory } from '../spaces/src/history.ts'
 
 let checks = 0
 let failures = 0
@@ -237,8 +237,8 @@ console.log('\n5. crash recovery goes RECOVER\n')
   const live2 = mk({ revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }] })
   const snap2 = snapOf(live2); delete snap2.revisions; snap2.pages[0].blocks[0].html = 'y'
   const s2 = new Store(live2)
-  ok(recoverInto(s2, { json: J(snap2), at: LIVE_MS + HOUR }) && J(s2.doc.revisions) === J(live2.revisions),
-    'revisions are KEPT when the snapshot has none (absent never wipes on recover)')
+  ok(recoverInto(s2, { json: J(snap2), at: LIVE_MS + HOUR }) && !Object.hasOwn(s2.doc, 'revisions'),
+    'revisions ABSENT from the (whole) snapshot were CLEARED: the key is removed')
 }
 {
   // a recovery snapshot is foreign input: a list with ONE entry this build
@@ -278,6 +278,56 @@ console.log('\n5. crash recovery goes RECOVER\n')
     'revisionsRecover refuses a foreign list WHOLE and never merges')
 }
 {
+  // CLEARED STAYS CLEARED. Clear history deletes the key; autosave then files
+  // the doc without it (kernel contentOnly = the doc minus collab); the file
+  // on disk still carries the old drafts. Restore must not bring them back.
+  const DRAFTS = [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }, { id: 'r1', at: '2026-09-02T00:00:00Z', body: { a: 2 } }]
+  const session = new Store(mk({ revisions: clone(DRAFTS) }))
+  ok(clearHistory(session.doc) && !('revisions' in session.doc), 'the real clearHistory deletes the key')
+  session.commit(() => { session.doc.pages[0].blocks[0].html = 'edited after clearing' })
+  const contentOnly = (d: SpacesDoc) => { const { collab: _c, ...rest } = d as Obj; void _c; return J(rest) }
+  const snapJson = contentOnly(session.doc)
+  const reopened = new Store(mk({ revisions: clone(DRAFTS) }))  // the file still has them
+  ok(recoveryOffered(snapJson, reopened.doc, LIVE_MS + HOUR), 'the banner is offered for the crash copy')
+  ok(recoverInto(reopened, { json: snapJson, at: LIVE_MS + HOUR }), 'Restore applies')
+  ok(!('revisions' in reopened.doc), 'CLEARED STAYS CLEARED: after Restore there is NO revisions key')
+  ok(text(reopened.doc) === 'edited after clearing' && J(Object.keys(reopened.doc.trail as Obj).sort()) === J(Object.keys(mk().trail as Obj).sort()),
+    '…and the content and the trail come back as usual')
+  // an explicit [] means the same
+  const s2 = new Store(mk({ revisions: clone(DRAFTS) }))
+  const withEmpty = snapOf(mk()); withEmpty.revisions = []; withEmpty.pages[0].blocks[0].html = 'e'
+  ok(recoverInto(s2, { json: J(withEmpty), at: LIVE_MS + HOUR }) && !('revisions' in s2.doc), 'an incoming [] is cleared too: no key, never `revisions: []`')
+  // the normalisation itself
+  ok(J((asWholeRecovery({ ...mk(), revisions: undefined } as SpacesDoc) as Obj).revisions) === '[]', 'asWholeRecovery states an absent revisions as []')
+  const has = mk({ revisions: clone(DRAFTS) })
+  ok(asWholeRecovery(has) === has, '…and leaves a snapshot that carries revisions untouched')
+  // a FOREIGN LIVE list is never written over by a readable recovered one
+  const foreignLive = [{ id: 'future', at: '2026-09-01T00:00:00Z', body: { v9: true, pages: 'a newer shape' } }]
+  const s3 = new Store(mk({ revisions: clone(foreignLive) }))
+  const before3 = J(s3.doc.revisions)
+  const readableSnap = snapOf(mk()); readableSnap.revisions = clone(DRAFTS); readableSnap.pages[0].blocks[0].html = 'f'
+  ok(recoverInto(s3, { json: J(readableSnap), at: LIVE_MS + HOUR }) && J(s3.doc.revisions) === before3,
+    'a FOREIGN live list + a readable recovered one → the live list is kept byte-for-byte')
+  // readable over readable still follows
+  const s4 = new Store(mk({ revisions: [DRAFTS[0]] }))
+  ok(recoverInto(s4, { json: J({ ...snapOf(mk()), revisions: DRAFTS }), at: LIVE_MS + HOUR }) && J(s4.doc.revisions) === J(DRAFTS),
+    'a readable recovered list over a readable live one still FOLLOWS')
+  // the hook's order, directly
+  ok(revisionsRecover(DRAFTS, []) === undefined, 'hook rule 1: [] → undefined (key removed)')
+  ok(revisionsRecover(foreignLive, DRAFTS) === foreignLive, 'hook rule 3: a foreign live list → live')
+  // 'back' is unaffected: history stays live, and a paste after a clear
+  // resurrects nothing
+  const b = new Store(mk({ revisions: clone(DRAFTS) }))
+  clearHistory(b.doc)
+  const pasted = snapOf(mk({ revisions: clone(DRAFTS) })); pasted.pages[0].blocks[0].html = 'pasted'
+  ok(replaceFromJson(b, J(pasted)) && !('revisions' in b.doc), 'Replace from JSON after a clear does not resurrect the drafts (history stays live: none)')
+  const v = new Store(mk({ revisions: clone(DRAFTS) }))
+  const noRevs = snapOf(mk()); noRevs.pages[0].blocks[0].html = 'version'
+  ok(restoreVersion(v, J(noRevs)) && J(v.doc.revisions) === J(DRAFTS), 'a version restore with no revisions keeps the live history (\'back\' is untouched)')
+  v.commit(() => { v.doc.pages[0].blocks[0].html = 'after' }); v.undo()
+  ok(J(v.doc.revisions) === J(DRAFTS), '…and undo keeps it too')
+}
+{
   // trail through the real banner path: the hook unions by day
   const live = mk({ trail: { '2026-09-10': row(5), '2026-09-11': row(6), '2026-09-14': row(9) } })
   const snap = snapOf(live)
@@ -314,7 +364,8 @@ console.log('\n5b. a recovery removes what was removed (wholeSnapshot)\n')
   ok(!('design' in d) && !('footnotes' in d) && !('journalTemplate' in d),
     'a design, footnotes and journal template REMOVED after the last save stay removed after recovery')
   ok(!('futureKey' in d), 'an UNKNOWN top-level key absent from the snapshot is removed too')
-  ok(J([d.trail, d.revisions]) === histBefore, 'an absent trail / revisions in the snapshot still KEEPS the live history')
+  ok(J(d.trail) === J(JSON.parse(histBefore)[0]), 'an absent trail in the snapshot KEEPS the live rows')
+  ok(!('revisions' in d), 'an absent revisions in the snapshot means cleared: no key')
   ok(identityLive(d), 'the identity / mode / capability floor is unchanged')
   ok(!recoveryOffered(J(snapOf(live)), live, LIVE_MS + HOUR), 'a snapshot identical to the file still raises no banner')
   ok(recoveryOffered(J(snap), live, LIVE_MS + HOUR), 'a snapshot that removed fields raises it')
