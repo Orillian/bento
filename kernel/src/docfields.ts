@@ -88,12 +88,31 @@ export interface RestoreRules {
   /** Per-field recover hook — used only for a 'live' history field on 'recover'.
    *  A field with no hook follows incoming when present, keeps live when absent. */
   readonly recover?: Readonly<Record<string, RecoverHook>>
+  /** Is `incoming` a WHOLE document (the default) or a PROJECTION of one? Every
+   *  app's recovery snapshot is whole — `putRecovery` stores `contentOnly(doc)`,
+   *  the full document minus capability — so on 'recover' an absent CONTENT (or
+   *  unknown) field means the user DELETED it before the crash, and it stays
+   *  removed. A PROJECTION snapshot — one that legitimately omits fields it still
+   *  has — MUST pass FALSE: forget it and those fields are REMOVED, so its failure
+   *  is data loss, not exposure. Under FALSE an absent field keeps the live
+   *  value. This keys on the EFFECTIVE keepLive, not the class: a history field an
+   *  app OVERRODE to 'follows' (e.g. comments) is treated as content, so a deleted
+   *  comment stays deleted. A history field left at its default 'live' keep
+   *  (revisions, signatures) keeps live when absent either way, and the
+   *  identity/mode/capability floor is unchanged. Only 'recover' is affected —
+   *  'back' already drops an absent field. (maintainer ruling 2026-10-15: whole is
+   *  the default.) */
+  readonly wholeSnapshot?: boolean
 }
 
 /** Resolve a whole-document restore and return the doc to INSTALL.
  *  Over the union of live + incoming keys:
  *   - a 'follows' field takes `incoming` ('back': absent means dropped; 'recover':
- *     an absent key never wipes a live value — a snapshot may be a projection);
+ *     absent means dropped too for a WHOLE snapshot — the default, since a
+ *     recovery snapshot is contentOnly(doc) and an absent field was deleted — but
+ *     absent keeps live for a PROJECTION (wholeSnapshot:false). This covers a
+ *     history field OVERRIDDEN to 'follows' (e.g. comments): it restores like
+ *     content, so a deleted one stays deleted on a whole snapshot;
  *   - a 'live' field keeps the live value, EXCEPT a 'live' history field on
  *     'recover', which uses its recover hook, or (no hook) follows incoming when
  *     present and keeps live when absent.
@@ -121,6 +140,7 @@ export function applyRestore<T extends object>(
   at: { live?: number; incoming?: number } = {},
 ): T {
   const L = live as Obj, I = incoming as Obj
+  const whole = rules.wholeSnapshot ?? true // incoming is a whole document unless told otherwise
   const out: Obj = {}
   for (const k of new Set([...Object.keys(L), ...Object.keys(I)])) {
     if (PROTO_KEYS.has(k)) continue // never assign a prototype key from an untrusted snapshot
@@ -131,7 +151,15 @@ export function applyRestore<T extends object>(
     const kl = override ?? defaultKeepLive(cls)
     if (kl === 'follows') {
       if (I[k] !== undefined) out[k] = I[k]
-      else if (direction === 'recover' && L[k] !== undefined) out[k] = L[k] // absent never wipes on recover
+      // On 'recover', an absent follows-field keeps live ONLY for a PROJECTION
+      // snapshot (wholeSnapshot:false). This keys on the EFFECTIVE keepLive, not
+      // the class: a field reaches here because it behaves like content for
+      // restore — content, unknown, AND a history field an app OVERRODE to
+      // 'follows' (e.g. comments). In a WHOLE snapshot (the default) its absence
+      // means the user DELETED it, so it stays removed — not resurrected. (A
+      // history field left at its default 'live' keep is handled below, where
+      // absent keeps live either way.)
+      else if (direction === 'recover' && L[k] !== undefined && !whole) out[k] = L[k]
       continue
     }
     // 'live'
