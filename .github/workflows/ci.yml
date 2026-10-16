@@ -81,6 +81,12 @@ jobs:
         # without a release, so they must be complete. Packs are downloadable
         # and re-publishable on their own, so they get a floor and a report.
         run: node scripts/test-i18n-coverage.mjs
+      - name: Slides Portuguese is pt-BR; the theme picker has its own words
+        # No European-Portuguese markers (ficheiro, guardar for save,
+        # diapositivo, separador, ecrã, tu forms…) in slides' pt catalog, and the
+        # Appearance picker uses "Light mode"/"Dark mode", never the "Light"
+        # font weight ("Fino").
+        run: node scripts/test-slides-pt-br.mjs
 
       - name: Language packs build and index cleanly
         # Emits every pack and builds the index payload WITHOUT signing (--dry

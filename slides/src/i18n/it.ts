@@ -786,6 +786,8 @@ export const it: Catalog = {
   "Hidden — skipped while presenting and left out of PDF export": "Nascosta — saltata durante la presentazione ed esclusa dall’esportazione PDF",
   "Appearance": "Aspetto",
   "Match my system": "Come il sistema",
+  "Light mode": "Modalità chiara",
+  "Dark mode": "Modalità scura",
   "Dark": "Scuro",
   "You saved a deck from here before.": "Hai già salvato una presentazione da qui.",
   "This page always starts fresh. Open your file to carry on with it:": "Questa pagina riparte sempre da zero. Apri il tuo file per continuare:",
