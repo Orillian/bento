@@ -87,19 +87,22 @@ H('recover (crash): the newer snapshot wins content AND history; identity still 
   ok((r.comments as Rec)?.t1 === 'incoming', 'comments follow the snapshot on recover')
 }
 
-H('recover of a WHOLE snapshot (the default): a deleted content/unknown field stays removed')
+H('recover of a WHOLE snapshot (the default): a deleted field stays removed — by EFFECTIVE keepLive, not class')
 {
   // Every app's recovery snapshot is contentOnly(doc) — the WHOLE document minus
   // capability — so an absent field means the user DELETED it before the crash.
-  // wholeSnapshot defaults true, so a 'follows' content or unknown field absent
-  // from the snapshot is REMOVED, not resurrected. A HISTORY field still keeps
-  // live. (Regression #701 introduced; maintainer ruling 2026-10-15.)
+  // wholeSnapshot defaults true. Removal keys on EFFECTIVE keepLive, not class:
+  // an effective-'follows' field (content, unknown, AND a history field OVERRIDDEN
+  // to 'follows' like comments) absent → REMOVED; a history field at its default
+  // 'live' keep (revisions) absent → kept live. (comments is the case security
+  // required: a deleted comment/redaction must not resurrect and ride the next
+  // shared copy. Regression first introduced in #701, partly fixed in #716.)
   const inc = incoming(); delete inc.body; delete inc.mystery; delete inc.revisions; delete inc.comments
   const r = applyRestore(live(), inc, 'recover', RULES) as Rec
   ok(!('body' in r), 'a CONTENT field the user deleted stays removed (not brought back)')
   ok(!('mystery' in r), 'an UNKNOWN field absent from the whole snapshot is removed too')
-  ok(eq(r.revisions, live().revisions), 'but a HISTORY field absent keeps the live value (trail/revisions rule unchanged)')
-  ok((r.comments as Rec)?.t1 === 'live', 'and a history-class follows field (comments) absent keeps live')
+  ok(!('comments' in r), 'an OVERRIDDEN history field (comments, keepLive follows) deleted stays removed')
+  ok(eq(r.revisions, live().revisions), 'but a DEFAULT-live history field (revisions) absent keeps the live value')
 }
 
 H('recover of a PROJECTION snapshot (wholeSnapshot:false): absent keeps live')
@@ -107,10 +110,11 @@ H('recover of a PROJECTION snapshot (wholeSnapshot:false): absent keeps live')
   // An incoming that legitimately omits fields it still has — a projection — must
   // not have those fields removed. The caller opts out of the whole-doc default.
   const PROJ: RestoreRules = { ...RULES, wholeSnapshot: false }
-  const inc = incoming(); delete inc.body; delete inc.mystery; delete inc.revisions
+  const inc = incoming(); delete inc.body; delete inc.mystery; delete inc.revisions; delete inc.comments
   const r = applyRestore(live(), inc, 'recover', PROJ) as Rec
   ok(r.body === 'live body', 'a content field absent from a PROJECTION keeps live (never wiped)')
   ok(r.mystery === 'live-x', 'an unknown field absent from a projection keeps live')
+  ok((r.comments as Rec)?.t1 === 'live', 'an overridden-to-follows history field (comments) absent from a projection keeps live')
   ok(eq(r.revisions, live().revisions), 'and history keeps live either way')
 }
 

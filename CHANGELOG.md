@@ -11,6 +11,40 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **The Appearance menu no longer offers a font weight.** In About, the
+  light-theme choice was translated as the font weight with the same English
+  name, so it read "Fino" in Portuguese, "Fin" in French and "Leicht" in German.
+  It now reads "Light mode" and "Dark mode", in every language.
+- **Portuguese is Brazilian throughout.** Strings added since the Portuguese
+  catalog arrived had drifted into European Portuguese ("ficheiro", "guardar",
+  "diapositivo", "ecrã", "palavra-passe"). They now match the rest of slides'
+  pt-BR ("arquivo", "salvar", "slide", "tela", "senha").
+
+- **You're told when a deck has no crash backup.** Opened through bento/home,
+  a deck's crash-recovery copy is kept by the app; when a deck is too large for
+  it, the editor now says "Crash recovery is off for this deck — it’s too large
+  to keep a backup copy. Save often." once, where the save status shows, and
+  the unsaved-changes dot stops saying your work is kept in this browser.
+  Encrypted decks are never backed up there, so they never show it.
+
+- **Save a copy no longer makes the original forget its file.** After "Save a
+  copy…", the next ⌘S could ask where to save again, or write the copy instead
+  of the file you were working in. It now saves the original, in place, with no
+  picker (#556, #696).
+
+- **Save a copy keeps you on the original.** "Save a copy…" writes the copy and
+  leaves you editing the file you opened: the toast now says "Copy saved — you
+  are still editing the original" instead of "Saved", and the file name, the
+  unsaved-changes dot and live sharing stay with the original until you save it.
+
+- **A recovered copy that looks older says so.** When the crash-recovery copy
+  this browser kept is older than the file you just opened, the banner now
+  warns "This recovered copy looks older than the file you opened. Keep the
+  file unless you know it’s newer.", with "Keep the file" as the default and
+  "Restore anyway" beside it. Keeping the file leaves the recovered copy in
+  place rather than deleting it, because the two times can come from different
+  devices' clocks.
+
 - **Count-up leaves versions and addresses alone.** On a text box that counts
   up, a run of digits that isn't a number — a version like `1.2.3`, an address
   like `192.168.1.1` — used to be animated too and settle rewritten (`1.2.3`

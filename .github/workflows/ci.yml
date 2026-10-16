@@ -81,6 +81,12 @@ jobs:
         # without a release, so they must be complete. Packs are downloadable
         # and re-publishable on their own, so they get a floor and a report.
         run: node scripts/test-i18n-coverage.mjs
+      - name: Slides Portuguese is pt-BR; the theme picker has its own words
+        # No European-Portuguese markers (ficheiro, guardar for save,
+        # diapositivo, separador, ecrã, tu forms…) in slides' pt catalog, and the
+        # Appearance picker uses "Light mode"/"Dark mode", never the "Light"
+        # font weight ("Fino").
+        run: node scripts/test-slides-pt-br.mjs
 
       - name: Language packs build and index cleanly
         # Emits every pack and builds the index payload WITHOUT signing (--dry
@@ -2402,6 +2408,19 @@ jobs:
         # during a write stays dirty, writes never overlap, the dot goes out
         # only when the deck on screen is the one on disk.
         run: node scripts/test-slides-save-browser.mjs
+      - name: Recovery-off notice in Chromium
+        # Under a per-document store host that refuses the recovery copy, the
+        # save status says crash recovery is off (approved wording), once, held
+        # long enough to read; the dot stops claiming a backup; a host that
+        # keeps the copy gets no message; never for an encrypted deck.
+        run: node scripts/test-slides-recovery-off-browser.mjs
+      - name: Save a copy and the older-snapshot banner in Chromium
+        # "Save a copy…" says "Copy saved — you are still editing the original",
+        # keeps the chip, title and dot on the original, and the next ⌘S writes
+        # the original with no picker; an older recovery snapshot gets the
+        # warning banner (Keep the file is the default and deletes nothing), a
+        # newer one the plain banner that claims nothing.
+        run: node scripts/test-slides-save-copy-browser.mjs
       - name: Ghost Cut in Chromium
         # ⇧⌘X fades the selection by CSS (shadowed elements too) and copies it;
         # a ghost is never selected and the pointer passes through it; Esc

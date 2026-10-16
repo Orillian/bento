@@ -18,9 +18,10 @@
 //      consequence was measured and ugly: export a read-only copy, keep
 //      working, press ⌘S — and the FULL document overwrites the locked copy you
 //      just handed someone. Templates and read-only copies below pass no
-//      `keepHandle`. "Save a copy" deliberately does keep it (it goes through
-//      `saveFile(doc, true)`, which is the copy purpose): a copy is a file you
-//      continue in, an export is a file you hand over.
+//      `keepHandle`. Neither does "Save a copy" (maintainer ruling 2026-10-15):
+//      the copy is a backup you keep, and you go on editing the ORIGINAL — the
+//      kernel's `saveFile(doc, true)` answers 'copied' and leaves its handle
+//      where it was.
 //   2. IDENTITY CHANGES IN EXACTLY ONE PLACE. `docId` is minted once and never
 //      regenerated (PLATFORM §3); "Save as new workbook" is the only sanctioned
 //      exception, and it mints a fresh id AND drops any collaboration
@@ -51,7 +52,7 @@
 // nobody honours is worse than no tier at all.
 
 import './saveui.css'
-import { afterPendingWrites, saveRevision, savingFor, type Acknowledge } from './saving.ts'
+import { afterPendingWrites, copyLanding, saveRevision, savingFor, type Acknowledge } from './saving.ts'
 import {
   saveFile, serializeAuto, writeUpdatedFileAs, canWriteInPlace, adoptFileHandle,
   isEncryptionActive, setEncryptionPassword,
@@ -235,21 +236,18 @@ export function installSaveMenu(host: SaveMenuHost): void {
     item(t('Save'), t('Write this workbook back to its own file.'),
       () => host.save())
 
-    item(t('Save a copy…'), t('A second file you carry on working in — same workbook, same identity.'),
+    item(t('Save a copy…'), t('A backup of this workbook for yourself — same workbook, same live session.'),
       async () => {
         if (!confirmBudget(store.doc)) return
         if (refuseSuperseded()) return
-        // THE COPY BECOMES THE OPEN FILE: `saveFile(…, true)` keeps the picked
-        // handle, so the next ⌘S and the next automatic save go to it. That is
-        // a handle change, so it queues behind any write still in flight to
-        // the old one, and it acknowledges like ⌘S — it was not acknowledged
-        // at all before, so the dot stayed lit over a file that held every edit
-        // and write-back rewrote the copy it had just been handed.
-        const out = await saveRevision(store, (snap) => saveFile(snap, true),
-          (r) => r === 'saved' || r === 'saved-as' ? 'open-file' : r === 'downloaded' ? 'elsewhere' : 'nowhere',
-          host.ack)
+        // THE COPY IS WRITTEN; THE OPEN FILE DOES NOT CHANGE. Still queued, so
+        // the copy's snapshot cannot interleave with a write to the original,
+        // but it is acknowledged as 'elsewhere': nothing is adopted as the
+        // open file's content and the unsaved dot is left exactly as it was —
+        // the original is still the file it describes.
+        const out = await saveRevision(store, (snap) => saveFile(snap, true), copyLanding, host.ack)
         if (out.kind === 'failed') return failed(out.error)
-        if (out.kind === 'done' && out.value !== 'cancelled') toast(t('Copy saved'))
+        if (out.kind === 'done' && out.value !== 'cancelled') toast(t('Copy saved — you are still editing the original'))
       })
 
     item(t('Save as new workbook…'), t('A separate workbook — same data, new identity. Nothing links it back to this one.'),

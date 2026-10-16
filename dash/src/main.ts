@@ -29,7 +29,7 @@ import {
   currentFileName,
 } from '../../kernel/src/save.ts'
 import { startTheme } from '../../kernel/src/theme.ts'
-import { putRecovery, pruneOld } from '../../kernel/src/autosave.ts'
+import { putRecovery, pruneOld, onRecoveryOff, recoveryOff } from '../../kernel/src/autosave.ts'
 import { FileWriteBack } from './writeback.ts'
 import { APP_VERSION } from '../../kernel/src/update.ts'
 import { mountAbout, openAbout, rememberVersion, checkAtLaunch } from './about.ts'
@@ -89,7 +89,7 @@ import {
 } from './cellfmt.ts'
 import { rangeKeys, stylePatch } from './cellprops.ts'
 import { mountComments, flatComments } from './comments.ts'
-import { mountRecovery } from './recovery.ts'
+import { mountRecovery, recoveryOffNotice } from './recovery.ts'
 import { mountDropOpen } from './dropopen.ts'
 import { Grid, canvasKey, CANVAS_MAX_ROWS, CANVAS_MAX_COLS } from './grid.ts'
 // Paste Special and Text to Columns. Both are DOM-free decisions with their
@@ -1265,7 +1265,11 @@ function boot(doc: DashDoc, repaired: number, frozen?: 'policy' | 'version', sav
         // session — but somebody editing for an hour on the assumption that a
         // crash costs them nothing deserves to know it costs them everything.
         void putRecovery(store.doc).then((stored) => {
-          if (stored || warnedNoBackstop) return
+          // A REFUSED copy (too large for the per-document store) is a different
+          // fact from a browser with no storage, and has its own message — see
+          // onRecoveryOff below. Saying "this browser will not keep a backup"
+          // there would blame the wrong thing and advise the wrong fix.
+          if (stored || warnedNoBackstop || recoveryOff(store.doc.docId)) return
           warnedNoBackstop = true
           toast(t('This browser will not keep a local backup of your work. Save the file yourself to keep changes.'))
         })
@@ -1281,6 +1285,11 @@ function boot(doc: DashDoc, repaired: number, frozen?: 'policy' | 'version', sav
     }, 2500)
   }
   let warnedNoBackstop = false
+  // CRASH RECOVERY OFF, said once per workbook (maintainer wording 2026-10-15,
+  // slides' string with "workbook"). The kernel fires this when the
+  // per-document store refuses the recovery copy; from then on there is no
+  // backstop, and the author should hear it rather than assume one.
+  onRecoveryOff(recoveryOffNotice(store, toast))
 
   // --- write-back to the real file
   //
