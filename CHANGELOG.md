@@ -11,6 +11,15 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **The Appearance menu no longer offers a font weight.** In About, the
+  light-theme choice was translated as the font weight with the same English
+  name, so it read "Fino" in Portuguese, "Fin" in French and "Leicht" in German.
+  It now reads "Light mode" and "Dark mode", in every language.
+- **Portuguese is Brazilian throughout.** Strings added since the Portuguese
+  catalog arrived had drifted into European Portuguese ("ficheiro", "guardar",
+  "diapositivo", "ecrã", "palavra-passe"). They now match the rest of slides'
+  pt-BR ("arquivo", "salvar", "slide", "tela", "senha").
+
 - **You're told when a deck has no crash backup.** Opened through bento/home,
   a deck's crash-recovery copy is kept by the app; when a deck is too large for
   it, the editor now says "Crash recovery is off for this deck — it’s too large

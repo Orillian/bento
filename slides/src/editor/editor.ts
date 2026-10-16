@@ -3793,7 +3793,7 @@ export class Editor {
     for (const c of THEME_CHOICES) {
       const o = document.createElement('option')
       o.value = c
-      o.textContent = c === 'auto' ? t('Match my system') : c === 'light' ? t('Light') : t('Dark')
+      o.textContent = c === 'auto' ? t('Match my system') : c === 'light' ? t('Light mode') : t('Dark mode')
       if (c === themeChoice()) o.selected = true
       themeSel.appendChild(o)
     }
