@@ -536,6 +536,8 @@ console.log('\n9. the recovery banner\'s words, and the recovery-off notice\n')
   ok(labels(o) === 'Keep the file · Restore anyway', `…offering "Keep the file" then "Restore anyway" (${labels(o)})`)
   const prim = o.buttons.filter((b) => b.primary)
   ok(prim.length === 1 && prim[0].action === 'keep', `…with "Keep the file" the ONE default (${prim.map((b) => b.label).join(', ') || 'none'})`)
+  const foc = o.buttons.filter((b) => b.focus)
+  ok(foc.length === 1 && foc[0].action === 'keep', `…and "Keep the file" the ONE button that takes focus, as in slides (${foc.map((b) => b.label).join(', ') || 'none'})`)
   ok(o.buttons.find((b) => b.label === 'Restore anyway')?.action === 'restore', '…and "Restore anyway" still restores: the older snapshot is never hidden')
   ok(!o.buttons.some((b) => b.action === 'discard'), '…and nothing on it deletes the snapshot (a skewed clock must never cost work)')
   {
@@ -554,6 +556,8 @@ console.log('\n9. the recovery banner\'s words, and the recovery-off notice\n')
     const bp = b.buttons.filter((x) => x.primary)
     ok(bp.length === 1 && bp[0].action === 'restore' && !b.buttons.find((x) => x.action === 'discard')?.primary,
       `…Restore is the ONE default, Discard is not (${bp.map((x) => x.label).join(', ') || 'none'})`)
+    // …but, as in slides, nothing on the plain banner takes focus
+    ok(!b.buttons.some((x) => x.focus), `…and no button takes focus, as in slides (${b.buttons.filter((x) => x.focus).map((x) => x.label).join(', ') || 'none'})`)
   }
   // #705's rule: unknown either side says nothing
   const noMod = mk(); delete (noMod as Obj).modified
@@ -610,8 +614,8 @@ console.log('\n9. the recovery banner\'s words, and the recovery-off notice\n')
   const main = readFileSync(join(process.cwd(), 'spaces/src/main.ts'), 'utf8')
   ok(/wireRecoveryOff\(\{\s*docId: \(\) => store\.doc\.docId,\s*encrypted: isEncryptionActive,\s*say: \(msg\) => editor\.status\(msg, 8000\),?\s*\}\)/.test(main),
     'main.ts registers the notice for the open space, encryption-aware, in the save status for 8s')
-  ok(/const spec = recoveryBanner\(snap, store\.doc\)[\s\S]{0,1200}?banner\(spec\.text, spec\.buttons\.map\(\(b\) => \[b\.label, run\[b\.action\], b\.primary\]\)\)/.test(main),
-    'the recovery banner shows what recoveryBanner says, primary and all')
+  ok(/const spec = recoveryBanner\(snap, store\.doc\)[\s\S]{0,1200}?banner\(spec\.text, spec\.buttons\.map\(\(b\) => \[b\.label, run\[b\.action\], b\.primary, b\.focus\]\)\)/.test(main),
+    'the recovery banner shows what recoveryBanner says, primary and focus and all')
   ok(/keep: \(\) => \{\}/.test(main), '"Keep the file" deletes nothing')
 }
 

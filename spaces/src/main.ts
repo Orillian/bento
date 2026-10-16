@@ -696,22 +696,23 @@ function boot(doc: SpacesDoc, repaired: string[], frozen?: 'policy' | 'version')
     .catch(() => { /* an unreachable server is not an error here */ })
 }
 
-/** A strip across the top. An action marked primary is the DEFAULT: styled as
- *  such and focused when the banner appears (slides' recovery banner). */
-function banner(text: string, actions: Array<[string, () => void, boolean?]> = []): void {
+/** A strip across the top. An action marked primary is styled as the default;
+ *  one marked focus takes focus when the banner appears. The two are separate
+ *  because slides' recovery banner separates them. */
+function banner(text: string, actions: Array<[string, () => void, boolean?, boolean?]> = []): void {
   const bar = document.createElement('div')
   bar.className = 'sp-banner'
   const span = document.createElement('span')
   span.textContent = text
   bar.append(span)
-  let primary: HTMLButtonElement | undefined
-  for (const [label, fn, isPrimary] of actions) {
+  let focused: HTMLButtonElement | undefined
+  for (const [label, fn, isPrimary, takesFocus] of actions) {
     const b = document.createElement('button')
     b.className = isPrimary ? 'sp-btn sp-primary' : 'sp-btn'
     b.textContent = label
     b.addEventListener('click', () => { fn(); bar.remove() })
     bar.append(b)
-    if (isPrimary) primary ??= b
+    if (takesFocus) focused ??= b
   }
   const close = document.createElement('button')
   close.className = 'sp-btn'
@@ -720,7 +721,7 @@ function banner(text: string, actions: Array<[string, () => void, boolean?]> = [
   close.addEventListener('click', () => bar.remove())
   bar.append(close)
   document.body.prepend(bar)
-  primary?.focus()
+  focused?.focus()
 }
 
 /**
@@ -753,5 +754,5 @@ async function offerRecovery(doc: SpacesDoc, store: Store, editor: Editor): Prom
     // a clock-skewed "older" must never cost work: the entry stays
     keep: () => {},
   }
-  banner(spec.text, spec.buttons.map((b) => [b.label, run[b.action], b.primary]))
+  banner(spec.text, spec.buttons.map((b) => [b.label, run[b.action], b.primary, b.focus]))
 }

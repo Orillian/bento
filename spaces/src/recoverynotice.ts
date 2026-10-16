@@ -13,7 +13,7 @@
 // the banner still offers the snapshot ("Restore anyway"), "Keep the file" is
 // the primary button and takes focus, and keeping the file deletes NOTHING —
 // a clock-skewed "older" must never cost work. With no signal the banner is the
-// plain one, with Restore its default, and claims nothing about "newer" or
+// plain one, with Restore its default (styled, not focused), and claims nothing about "newer" or
 // "safe".
 //
 // THE RECOVERY-OFF NOTICE. Under a host with a per-document store (bento/home),
@@ -31,8 +31,10 @@ export type RecoveryAction = 'restore' | 'discard' | 'keep'
 export interface RecoveryButton {
   label: string
   action: RecoveryAction
-  /** the default: styled primary and focused when the banner appears */
+  /** the default: styled primary */
   primary?: boolean
+  /** takes focus when the banner appears — only where slides focuses */
+  focus?: boolean
 }
 
 export interface RecoveryBanner {
@@ -50,14 +52,15 @@ export function recoveryBanner(snap: Snapshot, doc: { modified?: string | number
       older,
       text: t('This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.'),
       buttons: [
-        { label: t('Keep the file'), action: 'keep', primary: true },
+        { label: t('Keep the file'), action: 'keep', primary: true, focus: true },
         { label: t('Restore anyway'), action: 'restore' },
       ],
     }
   }
   // The plain banner's default is Restore, as slides' is (lead ruling,
   // 2026-10-16): a primary button is the expected recovery action, not a claim
-  // that the copy is newer or safe — the text still claims neither.
+  // that the copy is newer or safe — the text still claims neither. Like
+  // slides, it is styled as the default but NOT focused.
   return {
     older,
     text: t('Unsaved changes from a previous session were found.'),
