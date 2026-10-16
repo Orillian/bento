@@ -169,7 +169,7 @@ export class Store {
   restore(doc: TypeDoc, direction: RestoreDirection): void {
     this.#push({ kind: 'doc', doc: clone(this.#doc) });
     this.#run = null;
-    this.#doc = applyRestore(this.#doc, doc, direction, RESTORE_RULES);
+    this.#doc = applyRestore(this.#doc, doc, direction, RESTORE_RULES[direction]);
     this.#emit();
   }
 
@@ -186,7 +186,7 @@ export class Store {
       // Going BACK (undo or redo): content follows the snapshot, history stays
       // live, identity/mode/capability stay live (restorerules.ts). So undo
       // can never discard a revision, and comments undo like any edit.
-      this.#doc = applyRestore(this.#doc, s.doc, 'back', RESTORE_RULES);
+      this.#doc = applyRestore(this.#doc, s.doc, 'back', RESTORE_RULES.back);
       return inverse;
     }
     // A block snapshot restores that block in place. If the block is gone (a

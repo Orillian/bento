@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url'
 import { configureApp } from '../kernel/src/app.ts'
 import { setEncryptionPassword } from '../kernel/src/save.ts'
 import { docContentKey, canSnapshot, recoveryBanner } from '../type/src/autosave.ts'
-import { sign, newKey, verifyChain } from '../type/src/canon.ts'
+import { sign, newKey, verifyChain, newHistorySalt } from '../type/src/canon.ts'
 import { RESTORE_RULES } from '../type/src/restorerules.ts'
 import { validateRestoreRules } from '../kernel/src/docfields.ts'
 import { emptyDoc, uid, type TypeDoc } from '../type/src/model.ts'
@@ -45,6 +45,7 @@ const doc = (): TypeDoc => {
   const d = emptyDoc()
   d.title = 'Master Services Agreement'
   d.body = [{ id: uid(), kind: 'para', text: 'Payment is due within 30 days.' }]
+  d.historySalt = newHistorySalt()          // v2 signing commits to the history under it (canon.ts)
   return d
 }
 
@@ -297,6 +298,76 @@ H('crash recovery brings content AND history back TOGETHER (recover)')
     'undo of the restore reverts content but keeps history live — going back never discards')
 }
 
+H('what was DELETED before the crash stays deleted on Restore (recover, whole snapshot)')
+{
+  // The recovery snapshot is the WHOLE document as the crashed session held it,
+  // so a key it lacks was removed — Restore must not bring it back from the file.
+  // Each row asserts the FILE carries the thing first, so "absent after" means
+  // the restore removed it, not that it was never there. Through the banner's
+  // own path: gateRestored, then store.restore(…, 'recover').
+  const recover = (file: TypeDoc, snap: TypeDoc) => {
+    const store = new Store(JSON.parse(JSON.stringify(file)))
+    const gated = gateRestored(JSON.stringify(snap), store.doc)
+    ok(gated !== null, '  (the snapshot passes the restore gate)')
+    store.restore(gated!, 'recover')
+    return store
+  }
+  const thread = (block: string) => ({ c1: { id: 'c1', text: 'redact this clause', author: 'Bob', at: '2026-01-01T00:00:00.000Z',
+                                            replies: [], anchor: { block, from: 0, to: 7 } } })
+
+  // 1. a deleted comment — history-class, but FOLLOWS a restore (the #722 case)
+  {
+    const file = doc(); (file as any).comments = thread(file.body[0].id)
+    const snap = JSON.parse(JSON.stringify(file)) as TypeDoc; delete (snap as any).comments
+    const live = new Store(JSON.parse(JSON.stringify(file)))
+    ok(!!(live.doc as any).comments?.c1, 'the file carries the comment')
+    const s = recover(file, snap)
+    ok(!(s.doc as any).comments?.c1 && !JSON.stringify(s.doc).includes('redact this clause'),
+      'a comment deleted before the crash stays deleted')
+  }
+  // 2. a deleted paragraph
+  {
+    const file = doc(); file.body.push({ id: uid(), kind: 'para', text: 'Late fees accrue at 5%.' })
+    const snap = JSON.parse(JSON.stringify(file)) as TypeDoc; snap.body = [snap.body[0]]
+    ok(file.body.length === 2, 'the file carries the second paragraph')
+    const s = recover(file, snap)
+    ok(s.doc.body.length === 1 && !JSON.stringify(s.doc.body).includes('Late fees'), 'a paragraph deleted before the crash stays deleted')
+  }
+  // 3. a cleared field
+  {
+    const file = doc(); file.subtitle = 'DRAFT — privileged'
+    const snap = JSON.parse(JSON.stringify(file)) as TypeDoc; delete snap.subtitle
+    ok(!('subtitle' in snap), 'the snapshot genuinely lacks the subtitle key')
+    const s = recover(file, snap)
+    ok(!s.doc.subtitle, 'a field cleared before the crash stays cleared')
+  }
+  // 4. an emptied list — footnotes present-but-empty, and styles (parseDoc DROPS an empty map)
+  {
+    const file = doc(); file.footnotes = { f1: 'Per the side letter.' }
+    ;(file as any).styles = { quote: { label: 'Quote', italic: true } }
+    const snap = JSON.parse(JSON.stringify(file)) as TypeDoc; snap.footnotes = {} as any; delete (snap as any).styles
+    const gatedFile = gateRestored(JSON.stringify(file), file)!
+    ok(Object.keys(gatedFile.footnotes).length === 1 && !!(gatedFile as any).styles?.quote,
+      'the file carries the footnote and the style through parseDoc')
+    const s = recover(file, snap)
+    ok(Object.keys(s.doc.footnotes).length === 0, 'footnotes emptied before the crash stay empty')
+    ok(!(s.doc as any).styles?.quote, 'a style list emptied before the crash stays empty')
+  }
+  // 5. cleared HISTORY — no path in type empties revisions today; when one does
+  // (re-sign-to-trim), a whole snapshot's [] OR missing key must mean cleared.
+  // Today the missing case holds through parseDoc DEFAULTING absent revisions to
+  // [] (model.ts); this row is what notices if that default goes.
+  for (const how of ['[]', 'missing'] as const) {
+    const file = doc(); file.revisions = [rev('r1', 'negotiated away'), rev('r2', 'b')]
+    const snap = JSON.parse(JSON.stringify(file)) as TypeDoc
+    if (how === '[]') snap.revisions = []; else delete (snap as any).revisions
+    ok(how === '[]' || !('revisions' in snap), `  (the ${how} snapshot genuinely lacks revisions)`)
+    const s = recover(file, snap)
+    ok(s.doc.revisions.length === 0 && !JSON.stringify(s.doc).includes('negotiated away'),
+      `history cleared before the crash stays cleared — snapshot revisions ${how}`)
+  }
+}
+
 H('restoring an older version of a SIGNED document reports changed, and does not crash')
 {
   const k = await newKey()
@@ -337,10 +408,32 @@ H('the recovery banner: warn and default to keeping the file, never hide (ruling
 
 H('the restore rules themselves')
 {
-  let threw = false; try { validateRestoreRules(RESTORE_RULES) } catch { threw = true }
-  ok(!threw, 'they pass the kernel\'s floor check at load')
-  ok((RESTORE_RULES.keepLive as Record<string, string>).comments === 'follows', 'comments follow a restore')
-  ok(Object.keys(RESTORE_RULES.keepLive ?? {}).join() === 'comments', 'and that is the ONLY override')
+  for (const dir of ['back', 'recover'] as const) {
+    let threw = false; try { validateRestoreRules(RESTORE_RULES[dir]) } catch { threw = true }
+    ok(!threw, `the ${dir} rules pass the kernel's floor check at load`)
+    ok((RESTORE_RULES[dir].keepLive as Record<string, string>).comments === 'follows', `comments follow a ${dir} restore`)
+  }
+  ok(Object.keys(RESTORE_RULES.back.keepLive ?? {}).sort().join() === 'comments,signatures', 'back overrides comments and signatures, nothing else')
+  ok((RESTORE_RULES.back.keepLive as Record<string, string>).signatures === 'live', 'signatures stay LIVE going back')
+  ok(Object.keys(RESTORE_RULES.recover.keepLive ?? {}).join() === 'comments', 'recover overrides comments only — signatures follow the snapshot')
+  ok(RESTORE_RULES.recover.wholeSnapshot === true, 'and recover states its snapshot is WHOLE')
+}
+
+H('Sign is not undoable (ruling 7)')
+{
+  const k = await newKey()
+  const store = new Store(doc())
+  store.commit(d => { d.body[0].text = 'Payment is due within 60 days.' })
+  const signed = await sign(store.doc, k, { name: 'Alice' })
+  store.commit(d => { d.signatures.push(signed) }, { undoable: false })
+  ok(store.undo(), 'undo takes back the edit made BEFORE signing')
+  ok(store.doc.signatures.length === 1 && store.doc.signatures[0].sig === signed.sig,
+    'and the signature stays — ⌘Z never removes one')
+  const main = readFileSync(fileURLToPath(new URL('../type/src/main.ts', import.meta.url)), 'utf8')
+  ok(/store\.commit\(d => \{ d\.signatures\.push\(entry\); \}, \{ undoable: false \}\)/.test(main),
+    'the Sign button really commits with undoable: false')
+  ok(/store\.commit\(d => \{ d\.historySalt = salt; \}, \{ undoable: false \}\)/.test(main),
+    'and so does minting the history salt')
 }
 
 H('type\'s recovery store is its OWN, never the legacy shared one')
