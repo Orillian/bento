@@ -87,14 +87,35 @@ H('recover (crash): the newer snapshot wins content AND history; identity still 
   ok((r.comments as Rec)?.t1 === 'incoming', 'comments follow the snapshot on recover')
 }
 
-H('absent never wipes on recover; but a back restore reflects the version exactly')
+H('recover of a WHOLE snapshot (the default): a deleted content/unknown field stays removed')
 {
-  const inc = incoming(); delete inc.revisions; delete inc.comments; delete inc.mystery
+  // Every app's recovery snapshot is contentOnly(doc) — the WHOLE document minus
+  // capability — so an absent field means the user DELETED it before the crash.
+  // wholeSnapshot defaults true, so a 'follows' content or unknown field absent
+  // from the snapshot is REMOVED, not resurrected. A HISTORY field still keeps
+  // live. (Regression #701 introduced; maintainer ruling 2026-10-15.)
+  const inc = incoming(); delete inc.body; delete inc.mystery; delete inc.revisions; delete inc.comments
   const r = applyRestore(live(), inc, 'recover', RULES) as Rec
-  ok(eq(r.revisions, live().revisions), 'a history field ABSENT from the snapshot keeps the live value (never wiped)')
-  ok((r.comments as Rec)?.t1 === 'live', 'a follows field absent on recover keeps live')
-  ok(r.mystery === 'live-x', 'an unknown field absent on recover keeps live')
-  // version restore is exact: a field the version lacks is dropped
+  ok(!('body' in r), 'a CONTENT field the user deleted stays removed (not brought back)')
+  ok(!('mystery' in r), 'an UNKNOWN field absent from the whole snapshot is removed too')
+  ok(eq(r.revisions, live().revisions), 'but a HISTORY field absent keeps the live value (trail/revisions rule unchanged)')
+  ok((r.comments as Rec)?.t1 === 'live', 'and a history-class follows field (comments) absent keeps live')
+}
+
+H('recover of a PROJECTION snapshot (wholeSnapshot:false): absent keeps live')
+{
+  // An incoming that legitimately omits fields it still has — a projection — must
+  // not have those fields removed. The caller opts out of the whole-doc default.
+  const PROJ: RestoreRules = { ...RULES, wholeSnapshot: false }
+  const inc = incoming(); delete inc.body; delete inc.mystery; delete inc.revisions
+  const r = applyRestore(live(), inc, 'recover', PROJ) as Rec
+  ok(r.body === 'live body', 'a content field absent from a PROJECTION keeps live (never wiped)')
+  ok(r.mystery === 'live-x', 'an unknown field absent from a projection keeps live')
+  ok(eq(r.revisions, live().revisions), 'and history keeps live either way')
+}
+
+H('a back restore reflects the version exactly (wholeSnapshot does not apply)')
+{
   const inc2 = incoming(); delete inc2.comments
   const r2 = applyRestore(live(), inc2, 'back', RULES) as Rec
   ok(!('comments' in r2), 'on back, a follows field the version lacks is dropped (the version had none)')

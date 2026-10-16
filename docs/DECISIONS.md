@@ -10347,6 +10347,23 @@ Mutations, all red by exit code:
 Naming a content key, an identity key, or a misspelled key in `syncHistory`
 fails tsc.
 
+## 2026-10-15 — dash: Save a copy and the older-copy banner, per the maintainer ruling
+
+Dash adopts the maintainer's ruling and slides' wording (#713) verbatim. Two
+choices are dash's and are recorded because a later change could undo them:
+
+- **A copy never lands in the open file, whatever the kernel answers.**
+  `copyLanding` (dash/src/saving.ts) maps every result but `cancelled` to
+  "elsewhere", rather than listing the results that mean a copy. A future result
+  name, or an old one like `saved-as`, can then never retarget the workbook or
+  clear its unsaved dot.
+- **"Keep the file" dismisses; it never deletes.** The older-copy banner offers
+  Keep (default, focused) and Restore anyway, and no Discard. "Older" comes from
+  two clocks that need not agree (kernel `recoveryLooksOlder`), so the advice
+  must never cost the copy. It stays for the next open, as ✕ already left it.
+  `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
+  stamps `modified` on every edit.
+
 ## 2026-10-15 — bento/spaces restores by direction, and a recovery unions the trail by day
 
 Every whole-document restore in bento/spaces now resolves through the kernel's
@@ -10380,14 +10397,20 @@ checkpoint applied as-is would empty the pool. The undo path alone overrides
 `assets` to 'live' (`UNDO_RULES`). That is what undo did before. A version
 restore and a paste carry their own pool, so there it follows.
 
-One known gap, which comes from the kernel and is pinned in
-`scripts/test-spaces-restore-gate.ts`. On 'recover', a content field missing
-from the snapshot keeps the live value. So a design, or footnotes, removed
-after the last save are not removed by a recovery.
+**A recovery removes what was removed.** The banner path passes
+`wholeSnapshot: true` explicitly. Kernel #716 made that the default, but the
+spaces call still states it, because the recovery snapshot is
+`contentOnly(doc)`, the whole document. So a content key or an unknown
+top-level key missing from the snapshot was deleted by the person, and it
+stays deleted after recovery. That covers a design, footnotes or a journal
+template removed after the last save. History is the exception: a snapshot
+with no `trail` or `revisions` still keeps the live value. The identity, mode
+and capability floor is unchanged.
 
 Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - recovery passed as 'back';
 - Replace from JSON passed as 'recover';
 - the hook returning the snapshot's trail wholesale;
 - the span drop removed;
-- the undo assets override removed.
+- the undo assets override removed;
+- `wholeSnapshot: false` on the recovery path.

@@ -29,7 +29,7 @@ import { adoptFileHandle, canWriteInPlace, currentFileName, fileBase, hasFileHan
 import { createSaveQueue, saveRevision } from '../saving'
 import type { SaveQueue } from '../../../kernel/src/savequeue.ts'
 import { noteSavedFromWeb } from './returngate'
-import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, listVersions, pruneOld, putRecovery, type Snapshot } from '../autosave'
+import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, listVersions, onRecoveryOff, pruneOld, putRecovery, recoveryLooksOlder, type Snapshot } from '../autosave'
 import { insertElements, insertSlides, parseClip, serializeElements, serializeSlides } from './clipboard'
 import { estimatedFrames, fencedElements, splitFences } from './codefence'
 import { openSpeakerWindow, speakerIdleBody } from '../screens'
@@ -2640,6 +2640,27 @@ export class Editor {
     this.noticeIfCannotWriteInPlace()
     this.noticeIfJustUpdated()
     this.store.on('doc', () => this.scheduleAutosave())
+    onRecoveryOff((docId) => this.noticeRecoveryOff(docId))
+  }
+
+  /** Decks told, in this page, that their crash recovery is off — once each. */
+  private recoveryOffSaid = new Set<string>()
+
+  /**
+   * A host with a per-document store (bento/home) refused this deck's recovery
+   * copy, so from now on there is NO crash backstop for it. Say so, once, where
+   * the save status shows, and stop the unsaved dot's tooltip claiming the work
+   * is "kept in this browser". Never for an encrypted deck: those are never
+   * snapshotted, so there was no backstop to lose.
+   */
+  private noticeRecoveryOff(docId: string) {
+    if (docId !== this.store.doc.docId || isEncryptionActive() || this.recoveryOffSaid.has(docId)) return
+    this.recoveryOffSaid.add(docId)
+    this.lastBackupAt = 0
+    this.dirtyDot.title = canWriteInPlace()
+      ? t('Unsaved changes — ⌘S saves this file in place')
+      : t('Unsaved changes — ⌘S downloads an updated copy (this browser can’t rewrite the file)')
+    this.flashSaved(t('Crash recovery is off for this deck — it’s too large to keep a backup copy. Save often.'), 8000)
   }
 
   private scheduleAutosave() {
@@ -2905,11 +2926,19 @@ export class Editor {
     document.querySelector('.ed-recover')?.remove()
     const bar = div('ed-recover')
     const when = new Date(snap.at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })
+    // The kernel's SIGNAL (recoveryLooksOlder): the snapshot is older than the
+    // file now open. It only changes the words and the default — the snapshot is
+    // still offered, and a false "older" (two devices' clocks) must never cost
+    // work, so "Keep the file" dismisses without deleting it. When the signal is
+    // false the banner is the plain one and claims nothing ("newer", "safe").
+    const older = recoveryLooksOlder(snap, this.store.doc)
     const msg = document.createElement('span')
-    msg.textContent = t('Unsaved changes from {when} were found.', { when })
+    msg.textContent = older
+      ? t('This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.')
+      : t('Unsaved changes from {when} were found.', { when })
     const restore = document.createElement('button')
-    restore.className = 'ed-btn ed-btn-primary'
-    restore.textContent = t('Restore')
+    restore.className = older ? 'ed-btn' : 'ed-btn ed-btn-primary'
+    restore.textContent = older ? t('Restore anyway') : t('Restore')
     restore.addEventListener('click', () => {
       // gated again against the document as it is NOW: the live session may
       // have been joined or rotated since the banner appeared, and the identity
@@ -2922,6 +2951,16 @@ export class Editor {
       bar.remove()
       this.toast(t('Restored your unsaved changes'))
     })
+    if (older) {
+      const keep = document.createElement('button')
+      keep.className = 'ed-btn ed-btn-primary'
+      keep.textContent = t('Keep the file')
+      keep.addEventListener('click', () => bar.remove())
+      bar.append(msg, keep, restore)
+      document.body.appendChild(bar)
+      keep.focus() // keeping the file is the default
+      return
+    }
     const dismiss = document.createElement('button')
     dismiss.className = 'ed-btn'
     dismiss.textContent = t('Discard')
@@ -3082,7 +3121,7 @@ export class Editor {
   }
 
   private savedTimer = 0
-  private flashSaved(message = t('Saved')) {
+  private flashSaved(message = t('Saved'), holdMs = 1400) {
     const title = document.querySelector<HTMLElement>('.ed-topbar .ed-title')
     const bar = title?.parentElement
     if (!title || !bar) return
@@ -3098,7 +3137,7 @@ export class Editor {
     void tag.offsetWidth // paint a frame at opacity 0 so the fade-in runs
     tag.classList.add('show')
     clearTimeout(this.savedTimer)
-    this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), 1400)
+    this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), holdMs)
   }
 
   async save(forcePicker: boolean) {
@@ -3119,6 +3158,14 @@ export class Editor {
       return
     }
     const result = out.result
+    // "Save a copy…" wrote ANOTHER file and leaves you editing this one (#705):
+    // nothing about the open deck changes — not its title, file chip, ⌘S target
+    // or sharing, and its unsaved dot stays (saving.ts). Saying "Saved" here, or
+    // retitling to the copy, would claim the deck had become the copy.
+    if ((result as string) === 'copied') {
+      this.toast(t('Copy saved — you are still editing the original'))
+      return
+    }
     try {
       // the file name is knowable from here on — put it in the tab and the chip
       this.syncWindowTitle()
