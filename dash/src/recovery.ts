@@ -47,7 +47,7 @@
 // callers, so they cannot drift apart again.
 
 import './recovery.css'
-import { getRecovery, clearRecovery, type Snapshot } from '../../kernel/src/autosave.ts'
+import { getRecovery, clearRecovery, recoveryLooksOlder, type Snapshot } from '../../kernel/src/autosave.ts'
 import { isEncryptionActive } from '../../kernel/src/save.ts'
 import { planReplace } from './about.ts'
 import { parseDoc, type DashDoc } from './model.ts'
@@ -121,7 +121,13 @@ export type NoOfferReason =
   | 'same'        // rule 1 — the file already has these edits
 
 export type RecoveryDecision =
-  | { offer: true; doc: DashDoc; at: number }
+  /**
+   * `older`: the snapshot predates the file that loaded (kernel
+   * `recoveryLooksOlder`). A SIGNAL for the banner's wording, never a reason
+   * not to offer (maintainer ruling 2026-10-15): two devices' clocks can make
+   * a newer copy look older, and a hidden offer is unrecoverable work.
+   */
+  | { offer: true; doc: DashDoc; at: number; older: boolean }
   | { offer: false; why: NoOfferReason }
 
 export interface DecideInput {
@@ -200,7 +206,9 @@ export function decide(input: DecideInput): RecoveryDecision {
   const doc = restoredWorkbook(input.snapshot.json, input.doc)
   if (!doc) return { offer: false, why: 'unreadable' }
   if (contentKey(doc) === contentKey(input.doc)) return { offer: false, why: 'same' }
-  return { offer: true, doc, at: input.snapshot.at }
+  // Read against the workbook AS LOADED: `modified` is stamped on every edit,
+  // so asking after the reader has typed would compare against their typing.
+  return { offer: true, doc, at: input.snapshot.at, older: recoveryLooksOlder(input.snapshot, input.doc) }
 }
 
 // --- swapping a whole workbook in -------------------------------------------
@@ -263,6 +271,18 @@ export function swapWorkbook(host: WorkbookHost, next: DashDoc): boolean {
  * ever written) can assert on it. Never throws: a failure here must not be able
  * to take down a boot that has otherwise succeeded.
  */
+/**
+ * The listener main.ts hands to the kernel's `onRecoveryOff`: says, for THIS
+ * workbook only, that crash recovery is off (maintainer wording 2026-10-15).
+ * Here rather than inline so the rig can drive the exact function the app uses.
+ */
+export function recoveryOffNotice(store: Store, say: (message: string) => void): (docId: string) => void {
+  return (docId) => {
+    if (docId !== store.doc.docId) return
+    say(t('Crash recovery is off for this workbook — it’s too large to keep a backup copy. Save often.'))
+  }
+}
+
 export async function mountRecovery(host: WorkbookHost): Promise<NoOfferReason | 'offered'> {
   const doc = host.store.doc
   // Rule 2, enforced before the read as well as inside `decide`: an encrypted
@@ -272,11 +292,18 @@ export async function mountRecovery(host: WorkbookHost): Promise<NoOfferReason |
   try { snapshot = await getRecovery(doc.docId) } catch { return 'none' }
   const d = decide({ snapshot, doc, encrypted: false, readOnly: host.store.readOnly })
   if (!d.offer) return d.why
-  showBanner(host, d.doc, d.at)
+  showRecoveryBanner(host, d.doc, d.at, d.older)
   return 'offered'
 }
 
-function showBanner(host: WorkbookHost, recovered: DashDoc, at: number): void {
+/**
+ * The offer. Exported for the rig, with `clear` injectable so it can PROVE
+ * which answers delete the snapshot — "Keep the file" must not, ever.
+ */
+export function showRecoveryBanner(
+  host: WorkbookHost, recovered: DashDoc, at: number, older = false,
+  clear: (docId: string) => unknown = clearRecovery,
+): void {
   document.querySelector('.dxr-bar')?.remove()
   const bar = document.createElement('div')
   bar.className = 'dxr-bar'
@@ -287,9 +314,16 @@ function showBanner(host: WorkbookHost, recovered: DashDoc, at: number): void {
   })
   const msg = document.createElement('span')
   msg.className = 'dxr-msg'
-  msg.textContent = t('Unsaved changes from {when} were found in this browser.', { when })
+  // THE OLDER CASE WARNS AND KEEPS THE FILE BY DEFAULT — slides' banner,
+  // word for word (maintainer ruling 2026-10-15). It still OFFERS the copy:
+  // "older" comes from two clocks that need not agree, so it only changes the
+  // advice. No "newer"/"safe" wording in the ordinary case: when there is no
+  // warning the banner says what was found and nothing about which to trust.
+  msg.textContent = older
+    ? t('This recovered copy looks older than the file you opened. Keep the file unless you know it’s newer.')
+    : t('Unsaved changes from {when} were found in this browser.', { when })
 
-  const restore = btn(t('Restore'), 'dxr-primary')
+  const restore = btn(older ? t('Restore anyway') : t('Restore'), older ? '' : 'dxr-primary')
   const discard = btn(t('Discard'))
   const x = closeBtn(bar, t('Dismiss — the changes stay in this browser'))
 
@@ -318,10 +352,22 @@ function showBanner(host: WorkbookHost, recovered: DashDoc, at: number): void {
   })
 
   discard.addEventListener('click', () => {
-    void clearRecovery(host.store.doc.docId)
+    void clear(host.store.doc.docId)
     bar.remove()
   })
 
+  if (older) {
+    // "Keep the file" DISMISSES; it does not delete. A false "older" (clock
+    // skew) must never cost the copy — it stays for the next open, exactly
+    // like ✕. Discard is not offered here: deleting is the one answer the
+    // advice does not support. Keep comes first and takes focus.
+    const keep = btn(t('Keep the file'), 'dxr-primary')
+    keep.addEventListener('click', () => bar.remove())
+    bar.append(msg, keep, restore)
+    document.body.append(bar)
+    keep.focus?.()
+    return
+  }
   bar.append(msg, restore, discard, x)
   document.body.append(bar)
 }

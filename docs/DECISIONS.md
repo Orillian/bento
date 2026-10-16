@@ -10416,3 +10416,21 @@ removed them from it.
 on ANOTHER replica is a maintainer decision. Its history check would commonly
 read "changed", since each replica keeps its own revisions. Security's input:
 it must never warn on an expected condition.
+
+
+## 2026-10-15 — dash: Save a copy and the older-copy banner, per the maintainer ruling
+
+Dash adopts the maintainer's ruling and slides' wording (#713) verbatim. Two
+choices are dash's and are recorded because a later change could undo them:
+
+- **A copy never lands in the open file, whatever the kernel answers.**
+  `copyLanding` (dash/src/saving.ts) maps every result but `cancelled` to
+  "elsewhere", rather than listing the results that mean a copy. A future result
+  name, or an old one like `saved-as`, can then never retarget the workbook or
+  clear its unsaved dot.
+- **"Keep the file" dismisses; it never deletes.** The older-copy banner offers
+  Keep (default, focused) and Restore anyway, and no Discard. "Older" comes from
+  two clocks that need not agree (kernel `recoveryLooksOlder`), so the advice
+  must never cost the copy. It stays for the next open, as ✕ already left it.
+  `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
+  stamps `modified` on every edit.

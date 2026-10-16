@@ -105,6 +105,12 @@ jobs:
         # ⌘S, auto-save and Update this file all write through the queue.
         run: node scripts/test-slides-save-revisions.ts
 
+      - name: Slides count-up number rig
+        # #584 ruling: a single dot is a decimal point (12.500), only a
+        # well-formed group with two or more separators is thousands
+        # (1.250.000 settles as authored and counts up grouped).
+        run: node scripts/test-slides-countup-number.ts
+
       - name: Typecheck kernel (standalone)
         # Apps also typecheck kernel transitively through their imports; this
         # catches kernel-only errors under the kernel's own flags. It ALSO
@@ -2396,6 +2402,19 @@ jobs:
         # during a write stays dirty, writes never overlap, the dot goes out
         # only when the deck on screen is the one on disk.
         run: node scripts/test-slides-save-browser.mjs
+      - name: Recovery-off notice in Chromium
+        # Under a per-document store host that refuses the recovery copy, the
+        # save status says crash recovery is off (approved wording), once, held
+        # long enough to read; the dot stops claiming a backup; a host that
+        # keeps the copy gets no message; never for an encrypted deck.
+        run: node scripts/test-slides-recovery-off-browser.mjs
+      - name: Save a copy and the older-snapshot banner in Chromium
+        # "Save a copy…" says "Copy saved — you are still editing the original",
+        # keeps the chip, title and dot on the original, and the next ⌘S writes
+        # the original with no picker; an older recovery snapshot gets the
+        # warning banner (Keep the file is the default and deletes nothing), a
+        # newer one the plain banner that claims nothing.
+        run: node scripts/test-slides-save-copy-browser.mjs
       - name: Ghost Cut in Chromium
         # ⇧⌘X fades the selection by CSS (shadowed elements too) and copies it;
         # a ghost is never selected and the pointer passes through it; Esc
