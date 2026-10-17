@@ -104,6 +104,11 @@ if (envelope) {
     doc.docId = uid('doc')
     boot(doc, [], undefined)
   } else {
+    // MOUNTED, though refused — the same reason as `locked` above: without it
+    // the loader reads "no app", runs the app again on every path (one refusal
+    // card per path) and paints its own failure over the explanation this file
+    // owes its reader. `refused` is the suite's shape (DECISIONS 2026-10-17).
+    ;(window as unknown as { bento: unknown }).bento = { format: 'bento/spaces', refused: true }
     refuse(res)
   }
 }
