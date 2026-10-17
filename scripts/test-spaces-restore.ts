@@ -31,7 +31,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Store, RESTORE_RULES, RECOVER_RULES, rulesFor, restoreAt } from '../spaces/src/store.ts'
 import { parseDoc, FORMAT, type SpacesDoc } from '../spaces/src/model.ts'
-import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored, asWholeRecovery } from '../spaces/src/restoregate.ts'
+import { recoverInto, restoreVersion, replaceFromJson, recoveryOffered, gateRestored } from '../spaces/src/restoregate.ts'
 import { trailRecover, pruneTrail, TRAIL_BUDGET, TRAIL_MAX, spanOf, dayIndex, parseTrailKey, type Trail, type TrailRow } from '../spaces/src/trail.ts'
 import { recordRevision, restoredDoc, revisionsOf, revisionsRecover, clearHistory } from '../spaces/src/history.ts'
 import { recoveryBanner, wireRecoveryOff, type RecoveryBanner } from '../spaces/src/recoverynotice.ts'
@@ -303,10 +303,33 @@ console.log('\n5. crash recovery goes RECOVER\n')
   const s2 = new Store(mk({ revisions: clone(DRAFTS) }))
   const withEmpty = snapOf(mk()); withEmpty.revisions = []; withEmpty.pages[0].blocks[0].html = 'e'
   ok(recoverInto(s2, { json: J(withEmpty), at: LIVE_MS + HOUR }) && !('revisions' in s2.doc), 'an incoming [] is cleared too: no key, never `revisions: []`')
-  // the normalisation itself
-  ok(J((asWholeRecovery({ ...mk(), revisions: undefined } as SpacesDoc) as Obj).revisions) === '[]', 'asWholeRecovery states an absent revisions as []')
-  const has = mk({ revisions: clone(DRAFTS) })
-  ok(asWholeRecovery(has) === has, '…and leaves a snapshot that carries revisions untouched')
+  // THE GUARD, MEASURED. Spaces no longer normalises an absent `revisions`
+  // itself; the kernel (#726) removes it from a whole snapshot unless the
+  // field is listed in keepLiveWhenAbsent. So RECOVER_RULES' list is the one
+  // thing between a cleared history and its resurrection. Plant the mistake —
+  // a variant listing 'revisions' — on the REAL rules object and run the REAL
+  // recovery path: the cleared drafts come BACK. That is the failure the
+  // exact-list pin above exists to prevent; the real rules must not do it.
+  {
+    const realList = RECOVER_RULES.keepLiveWhenAbsent
+    const runRecovery = (): SpacesDoc => {
+      const st = new Store(mk({ revisions: clone(DRAFTS) }))  // the file still has the drafts
+      recoverInto(st, { json: snapJson, at: LIVE_MS + HOUR })    // the snapshot was taken after Clear history
+      return st.doc
+    }
+    let planted: SpacesDoc
+    try {
+      ;(RECOVER_RULES as { keepLiveWhenAbsent?: readonly string[] }).keepLiveWhenAbsent = ['trail', 'revisions']
+      planted = runRecovery()
+    } finally {
+      ;(RECOVER_RULES as { keepLiveWhenAbsent?: readonly string[] }).keepLiveWhenAbsent = realList
+    }
+    ok(J(planted.revisions) === J(DRAFTS),
+      'PLANTED BUG: rules listing \'revisions\' in keepLiveWhenAbsent RESURRECT the cleared drafts (the bug the list guards against)')
+    const real = runRecovery()
+    ok(!('revisions' in real), '…while the REAL RECOVER_RULES leave cleared history cleared')
+    ok(J(RECOVER_RULES.keepLiveWhenAbsent) === J(['trail']), '…and the plant was undone (the list is exactly [\'trail\'] again)')
+  }
   // a FOREIGN LIVE list is never written over by a readable recovered one
   const foreignLive = [{ id: 'future', at: '2026-09-01T00:00:00Z', body: { v9: true, pages: 'a newer shape' } }]
   const s3 = new Store(mk({ revisions: clone(foreignLive) }))

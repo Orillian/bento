@@ -77,7 +77,7 @@ export { FROM_LIVE }
  *               this space, so history is reconciled with it rather than kept:
  *               `revisions` follows the snapshot when it carries a READABLE
  *               list, is REMOVED when the snapshot has none (a whole snapshot
- *               without it was CLEARED — restoregate.ts asWholeRecovery), and
+ *               without it was CLEARED — the kernel's default since #726), and
  *               a foreign list on either side keeps live (history.ts
  *               `revisionsRecover`); `trail` unions by day (trail.ts
  *               `trailRecover`), so an absent trail keeps the live rows.
@@ -113,6 +113,10 @@ export const RECOVER_RULES: RestoreRules = {
   // `trail`: nobody "clears" a trail by omission; a snapshot without one means
   // "no rows yet" (recorded nothing before the crash), and the live rows are
   // observations nobody can recompute. ONLY 'trail', never 'revisions'.
+  // This list is the ONE thing keeping cleared history cleared on recovery
+  // (spaces no longer normalises an absent `revisions` itself):
+  // scripts/test-spaces-restore.ts pins it to exactly ['trail'] and proves a
+  // variant listing 'revisions' brings cleared drafts back.
   keepLiveWhenAbsent: ['trail'],
 }
 validateRestoreRules(RECOVER_RULES)

@@ -10671,3 +10671,29 @@ Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - `'revisions'` added to `keepLiveWhenAbsent`, together with the
   normalisation removed, which resurrects cleared drafts. With the
   normalisation still in place, only the pins catch adding `'revisions'`.
+
+## 2026-10-17 — bento/spaces drops its own "absent revisions = cleared" step; the kernel does it
+
+This supersedes one part of the 2026-10-15 entry "bento/spaces restores by
+direction". That entry's `asWholeRecovery` step, which turned an absent
+`revisions` into `[]` before a recovery, is gone. Since kernel #726, a whole
+recovery snapshot removes an absent history key by default, so cleared
+history stays cleared without the spaces step. `RECOVER_RULES` still opts out
+exactly `['trail']` (`keepLiveWhenAbsent`), because a missing trail means "no
+rows yet", not a clear. `revisionsRecover` is kept unchanged:
+- a `[]` the snapshot carries still removes the key;
+- a foreign list on either side still keeps the live list;
+- a readable recovered list still follows the snapshot.
+
+With the step gone, the list is the only thing keeping cleared history
+cleared. `scripts/test-spaces-restore.ts` holds it two ways:
+- a pin that the list is exactly `['trail']`;
+- a behavioural row that plants `['trail', 'revisions']` on the real rules
+  and runs the real recovery path. The cleared drafts come back, and the row
+  asserts that the real rules do not do this.
+
+Mutations, all red:
+- adding `'revisions'` to the list: 8 rows in that rig and 1 in
+  `test-spaces-restore-gate.ts`, including every cleared-stays-cleared row
+  (before this change, only the 2 pins caught it);
+- removing the list: 6 + 1, covering the trail rows.

@@ -456,7 +456,7 @@ for (const [label, input, err] of [
   // entry is foreign input, gated first — restoregate.ts — and then handed to
   // replaceDoc, going 'back')
   const gate = fs.readFileSync(new URL('../spaces/src/restoregate.ts', import.meta.url), 'utf8')
-  ok(/restoreVersion\(h\.store, v\.json\)/.test(about) && /store\.replaceDoc\(incoming, direction/.test(gate) &&
+  ok(/restoreVersion\(h\.store, v\.json\)/.test(about) && /store\.replaceDoc\(g\.doc, direction/.test(gate) &&
     /function restoreVersion\([^)]*\)[^{]*\{\s*return restoreInto\(store, json, 'back'\)/.test(gate),
     '…and restores through replaceDoc, so ⌘Z walks it back')
 }

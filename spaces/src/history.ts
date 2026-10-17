@@ -245,13 +245,14 @@ export function historyIsForeign(doc: SpacesDoc): boolean {
  * store.ts `RESTORE_RULES` and consulted only by the crash-recovery banner
  * ('recover'), only when the snapshot carries the key. In this ORDER:
  *
- *   1. `[]` — CLEARED. restoregate.ts `asWholeRecovery` turns a snapshot with
- *      NO `revisions` into `[]` before the kernel sees it (the snapshot is the
- *      whole document, so absence means the person ran Clear history). Return
- *      `undefined` so the key is REMOVED, exactly as Clear history deletes it
- *      and never stores `[]`. Cleared stays cleared: otherwise drafts somebody
- *      cleared before sharing came back with Restore and left in the next copy
- *      — confidentiality beats integrity behind a banner the person accepted.
+ *   1. `[]` — CLEARED. Return `undefined` so the key is REMOVED, exactly as
+ *      Clear history deletes it and never stores `[]`. (A snapshot with NO
+ *      `revisions` never reaches this hook: the kernel removes an absent
+ *      history key from a whole snapshot itself, #726, and RECOVER_RULES does
+ *      not opt `revisions` out.) Cleared stays cleared: otherwise drafts
+ *      somebody cleared before sharing came back with Restore and left in the
+ *      next copy — confidentiality beats integrity behind a banner the person
+ *      accepted.
  *   2. FOREIGN incoming — not an array, or any entry failing `readable` (the
  *      check a file's list passes, `historyIsForeign`) → keep LIVE. A recovery
  *      snapshot is foreign input (file:// documents share its IndexedDB); one
