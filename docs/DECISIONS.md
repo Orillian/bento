@@ -10434,3 +10434,39 @@ choices are dash's and are recorded because a later change could undo them:
   must never cost the copy. It stays for the next open, as ✕ already left it.
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
+
+
+## 2026-10-17 — the suite's one field look, set in slides
+
+Every text field, select and textarea in an app's chrome wears one look. The
+rule is the `THE FIELD` block in `slides/src/styles.css`; dash, spaces and type
+copy that block as it stands rather than restyling fields one by one:
+
+- the selector is `:where(…)` over every `input` except checkbox, radio,
+  range, file, colour, button types and hidden, plus `select` and `textarea`;
+  colour inputs get the same border, fill and radius from their own block;
+- 1px solid `--line` border, `--field` fill, `--ink` text, 6px radius,
+  `font: inherit` at 12.5px, 26px tall (border-box, `padding: 0 6px`);
+  textareas are `height: auto` with `padding: 6px 8px` and `line-height: 1.5`;
+- focus is `:focus-visible` → `outline: 2px solid var(--accent-ink);
+  outline-offset: -1px`. The ring sits on the border, so a scroll container
+  cannot clip it.
+
+Two choices here could be undone by accident:
+
+- **Zero specificity, no class.** A field that needs a class to look right
+  comes out in the browser's dress the day someone forgets it. That had
+  happened five times in slides: in dark theme those fields had the browser's
+  `#3b3b3b` fill, and About's theme select had the whole UA look (square, grey
+  `#767676` border, 19px tall). Context rules now only SIZE a field (width,
+  flex, monospace font); they never restate its look.
+- **Two deliberate exceptions, by class.** The deck title is a ghost field (no
+  box at rest, the field's border on hover, its fill once focused). The
+  password gate is its own card on the dark boot splash. Anything else that
+  overrides the look needs a reason recorded here.
+
+`scripts/test-slides-fields-browser.mjs` walks the panel for every element
+kind, the slide panel, About, Replace from JSON, Export images, Encrypt with
+password, the Share popover and the comment popover, in both themes, and fails
+on any field that differs. It plants a field with its author styles reverted
+to prove that the check catches the browser's dress.
