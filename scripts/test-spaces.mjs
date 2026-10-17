@@ -85,6 +85,8 @@ const RIGS = [
   // every chrome field styled, light and dark — the built shell in Chromium
   { name: 'fields-browser', file: 'scripts/test-spaces-fields-browser.mjs' },
   { name: 'encrypted-browser', file: 'scripts/test-spaces-encrypted-browser.mjs' },
+  // the older-copy warning and the recovery-off notice, in the built shell
+  { name: 'recovery-browser', file: 'scripts/test-spaces-recovery-browser.mjs' },
   // drives the BUILT shell in Chrome; self-skips outside CI without one
   { name: 'chrome',  file: 'scripts/test-spaces-chrome.ts' },
 ]

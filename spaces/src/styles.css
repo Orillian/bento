@@ -1074,6 +1074,10 @@ a.sp-embed-src:hover { color: var(--ink); text-decoration: underline; }
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); font-size: 13.5px;
 }
 .sp-banner .sp-btn { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent-ink) 30%, transparent); }
+/* the default action (the recovery banner's "Keep the file") is slides' primary
+   on its banner: ink ground, page text, not the wash-coloured outline */
+.sp-banner .sp-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.sp-banner .sp-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
 .sp-gate { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--chrome); }
 .sp-gate-card {
   max-width: 620px; background: var(--surface); padding: 26px;
