@@ -11,6 +11,12 @@ pre-1.0.
 
 ## [Unreleased]
 
+## [1.2.9] — 2026-10-17
+
+- **Password-protected decks open again.** Since 1.2.0, a deck saved with a
+  password showed "This file could not start" instead of asking for the
+  password. It now asks for the password and opens as before. Nothing in the
+  file was lost: the deck was intact, it just could not show the prompt.
 - **A password-protected deck that won't open can be moved to the latest
   version on bento.page/convert.** Drop the `.bento.html` and choose "The
   same file, on the latest version". The page puts the file's document,
@@ -20,6 +26,15 @@ pre-1.0.
   whose app has a published release, encrypted or not. As always, nothing is
   uploaded. An encrypted deck is only moved onto a release that can open it
   (1.2.9 or later).
+- **Security: update this file. This release closes an issue found in our own
+  review.** After updating, **open each password-protected deck, unlock it, and
+  save it once.** What the issue was is described here once people have had time to
+  update.
+- **A browser too old for Bento now names the right app.** The notice it shows
+  said every file was a spreadsheet; a deck now says it is a presentation.
+- **A table written without a style opens.** A deck from another tool or an AI
+  agent whose table had no style settings stopped the properties panel from
+  opening; it now uses the default style.
 
 ## [1.2.8] — 2026-10-16
 
