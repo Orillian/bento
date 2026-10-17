@@ -114,6 +114,12 @@ const flag = (name, fallback) => {
 }
 const generator = flag('generator', 'bento-slides')
 const titleFallback = flag('title', 'bento/slides')
+// What the file IS, for the one message the loader writes before any app runs
+// (the unsupported-browser notice). It said "bento/dash spreadsheet" in every
+// app's shell — a slides deck told its reader it was a spreadsheet.
+const KIND = { 'bento-slides': 'presentation', 'bento-dash': 'spreadsheet', 'bento-spaces': 'space', 'bento-type': 'document' }
+if (!/^[\w/ .-]+$/.test(titleFallback)) throw new Error(`--title must be plain words, got ${JSON.stringify(titleFallback)}`)
+const fileKind = `${titleFallback} ${KIND[generator] ?? 'file'}`
 // How the inflated runtime is started. `cascade` (the default since 1.1.1):
 // see below. `blob` (the 1.1.0 loader): a module import from a blob: URL. `inline`: an inline <script type="module"> whose
 // textContent is the inflated bundle — no blob: URL at all, so it runs where a
@@ -463,7 +469,7 @@ const loader = `
     // never said what kind of file this is, and never mentioned that the data
     // is plain readable JSON in this same file, which is the one route out that
     // works with no capable browser at all.
-    fail('<b>This is a bento/dash spreadsheet.</b><br>Opening it needs a browser released in 2023 or later \\u2014 Safari 16.4+, Firefox 113+, or a current Chrome or Edge.<br><br>Nothing is lost: your data is stored as plain readable JSON inside this same file. Open it in a newer browser, or open it in a text editor and look for the block marked "bento-doc".')
+    fail('<b>This is a ${fileKind}.</b><br>Opening it needs a browser released in 2023 or later \\u2014 Safari 16.4+, Firefox 113+, or a current Chrome or Edge.<br><br>Nothing is lost: your data is stored as plain readable JSON inside this same file. Open it in a newer browser, or open it in a text editor and look for the block marked "bento-doc".')
     return
   }
   ${INFLATE_JS}${codec ? codec.LOADER_DECODER : ''}

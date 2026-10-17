@@ -2365,6 +2365,11 @@ jobs:
         # opens only its URL in a new tab with no opener, and says it needs
         # the network.
         run: node scripts/test-slides-import-link-browser.mjs
+      - name: The unsupported-browser notice names the app in Chromium
+        # Each app's shell, built with the flags its own build:single passes,
+        # says what it is ("a bento/slides presentation", …) — it said "a
+        # bento/dash spreadsheet" in every app.
+        run: node scripts/test-shell-unsupported-notice-browser.mjs
       - name: Under-specified documents boot in Chromium
         # parseDoc fills required fields only where absent and drops elements
         # that cannot render; unknown keys and element types survive (additivity).
