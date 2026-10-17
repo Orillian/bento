@@ -10462,7 +10462,10 @@ the file's own app.
   writer escapes it, and a raw one could change how the new shell parses),
   an empty block, a block that isn't JSON, and a document whose format isn't
   the app's.
-- **Carried:** the block and the file's own `<title>`. **Not carried:**
+- **Carried:** the block, and for an UNENCRYPTED file its own `<title>`. An
+  encrypted file keeps the shell's neutral title: builds before 1.2.9 wrote
+  an encrypted deck's real title in clear, and carrying it would re-publish
+  what the password hides (security review). **Not carried:**
   anything else the old shell held. Language packs are reported and can be
   added again; a first-page preview is regenerated on the next save, and
   encrypted files never have one.

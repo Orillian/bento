@@ -202,7 +202,8 @@ export function extractDoc(html: string): unknown {
 // document and never re-serialised. So an encrypted file's bento/enc envelope
 // stays exactly as it was: no password is asked for, nothing is decrypted.
 //
-// What is carried: the #bento-doc block, and the file's own <title>.
+// What is carried: the #bento-doc block, and (for an unencrypted file only)
+// the file's own <title>.
 // What is not: anything else the old shell held. Language packs
 // (application/bento+lang) are reported, and can be added again from About;
 // a first-page preview is regenerated on the next save (and encrypted files
@@ -275,8 +276,11 @@ export function spliceVerbatim(shellHtml: string, fileHtml: string, appId: strin
   const dst = docBlock(shellHtml)
   let out = shellHtml.slice(0, dst.start) + src.body + shellHtml.slice(dst.end)
   // the file's own title, when it is plain text (a <title> is raw text, so
-  // anything with < in it is left out rather than escaped into something else)
-  const title = /<title>([^<]*)<\/title>/.exec(fileHtml)?.[1]
+  // anything with < in it is left out rather than escaped into something else),
+  // and NEVER for an encrypted body: builds before 1.2.9 wrote an encrypted
+  // deck's real title into <title> in clear, so carrying it would re-publish
+  // the very thing the password hides. Those keep the shell's neutral title.
+  const title = encrypted ? undefined : /<title>([^<]*)<\/title>/.exec(fileHtml)?.[1]
   if (title !== undefined) out = out.replace(/<title>[^<]*<\/title>/, () => `<title>${title}</title>`)
   if (out.split(SCRIPT_CLOSE).length !== shellHtml.split(SCRIPT_CLOSE).length)
     throw new Error('splice changed the script-close count — refusing the output')

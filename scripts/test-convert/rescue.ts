@@ -63,7 +63,10 @@ console.log('an encrypted deck, rescued')
   ok(block(r.html) === body, 'the #bento-doc block is BYTE-IDENTICAL to the original')
   const back = await decryptEnvelope(parseEnvelope(block(r.html).trim())!, 'correct horse')
   ok(back !== null && JSON.parse(back).docId === 'd-rescue', 'the carried envelope still opens with the original password, to the same document')
-  ok(/<title>Board pack — Q3<\/title>/.test(r.html), 'the file\'s own title comes along')
+  // the fixture's <title> is the deck's real name IN CLEAR, as builds before
+  // 1.2.9 wrote it beside the ciphertext: it must not survive the rescue
+  const shellTitle = /<title>[^<]*<\/title>/.exec(LATEST)![0]
+  ok(r.html.includes(shellTitle) && !r.html.includes('Board pack'), `an encrypted file's plaintext title is NOT carried: the shell's neutral ${shellTitle} stays, and the old title is nowhere in the output`)
   ok(r.html.split(CLOSE).length === LATEST.split(CLOSE).length, 'the script-close count is the shell\'s')
 }
 
@@ -116,6 +119,7 @@ console.log('on the page: the conversion table')
   const r9 = await c.run(d, { async shell() { return { version: '1.2.9', html: LATEST } } })
   ok(block(new TextDecoder().decode(r9.bytes)) === body, 'onto 1.2.9 it is')
   const rp = await c.run(plain, old)
+  ok(/<title>Board pack — Q3<\/title>/.test(new TextDecoder().decode(rp.bytes)), 'a plain deck\'s own title does come along')
   ok(rp.bytes.length > 0, 'a plain deck may still move onto 1.2.8 (only opening encrypted files was broken)')
   const nope: Env = { async shell() { throw new Error('could not reach the release server (404)') } }
   const sp = detect('notes.bento.html', new TextEncoder().encode(withBlock(SHELL.replace('content="bento-slides"', 'content="bento-spaces"'), '{"format":"bento/spaces","pages":[]}')))
