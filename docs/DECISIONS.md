@@ -10434,3 +10434,109 @@ choices are dash's and are recorded because a later change could undo them:
   must never cost the copy. It stays for the next open, as ✕ already left it.
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
+
+## 2026-10-17 — dash adopts the suite's one field look
+
+Dash copies slides' `THE FIELD` block as written, into `dash/src/styles.css`
+(see "the suite's one field look, set in slides"). What is dash's own:
+
+- **`--field` is `var(--surface)`.** It's the fill dash's fields have always
+  had, so dark theme keeps dash's palette instead of importing slides' value.
+  `--accent-ink` was already defined, and the ring uses it, not `--blue`. Dark
+  amber passes the 3:1 that WCAG 2.2 SC 1.4.11 asks of a focus indicator.
+- **One exception, by class: `.dx-title`**, the ghost workbook title, as in
+  slides. The boot password gate reuses that class and stays as it is.
+- **Formerly ghost fields are now ordinary fields:** the formula bar, tab
+  rename and the story caption. Each had been boxless at rest. Recording why:
+  only the title is a ghost, so anything else that should be one needs a reason
+  here.
+- **Context rules only size.** Every `:focus { outline: none }` is gone; it
+  would outrank the zero-specificity ring and remove it. The "colour not set"
+  strike on a colour well is now a `background-image` over the fill, because
+  the `background` shorthand reset the fill.
+
+`scripts/test-dash-fields-browser.mjs` is slides' rig ported to 17 dash
+surfaces. Its five mutations are slides' own, and each fails it.
+
+## 2026-10-17 — Rescue: a file moved onto the latest shell of its own app, its document block carried byte for byte
+
+Slides 1.2.4–1.2.8 cannot open password-protected decks: the loader refuses
+every path over the password gate. A fixed shell can't reach those files,
+because About → Update runs inside the app and the file never boots.
+bento.page/convert therefore offers every Bento `.bento.html` "The same
+file, on the latest version". `deliver.ts spliceVerbatim` puts the file's
+`#bento-doc` block, BYTE FOR BYTE, into the newest signed and pinned shell of
+the file's own app.
+
+- **Never parsed into a document, never re-serialised, never decrypted.** A
+  `bento/enc` envelope stays exactly as it was, so no password is involved.
+  The rig decrypts the carried envelope with the original password to prove
+  it was untouched. A re-serialising splice was hidden by compact-JSON
+  fixtures (JSON.stringify reproduces them byte for byte), so the rig also
+  carries a pretty-printed envelope and a plain deck with `\u003c` escapes.
+  A re-serialising mutant fails on both, and the splice's own read-back
+  refuses it.
+- **Which app:** the file's shell `<meta name="generator">`, or, for a plain
+  file from a shell older than that tag, the document's format. The signed
+  manifest's `app` and the downloaded shell's generator must both match the
+  file's, or the rescue is refused. `fetchVerifiedShell` takes the app id; the
+  version floor stays slides-only.
+- **Refused rather than guessed:** a block containing a raw `<` (every Bento
+  writer escapes it, and a raw one could change how the new shell parses),
+  an empty block, a block that isn't JSON, and a document whose format isn't
+  the app's.
+- **Carried:** the block, and for an UNENCRYPTED file its own `<title>`. An
+  encrypted file keeps the shell's neutral title: builds before 1.2.9 wrote
+  an encrypted deck's real title in clear, and carrying it would re-publish
+  what the password hides (security review). **Not carried:**
+  anything else the old shell held. Language packs are reported and can be
+  added again; a first-page preview is regenerated on the next save, and
+  encrypted files never have one.
+- An app with no published release says so plainly.
+- **Never onto a shell that cannot open the file.** `ENC_OPEN_MIN` holds the
+  oldest release of each app that opens encrypted files (slides 1.2.9; 1.2.0–
+  1.2.8 all refuse). An encrypted file is not moved onto an older latest
+  release, so the rescue only goes live with 1.2.9. Plain files may still
+  move onto 1.2.8. Measured on slides' hotfix build: encrypted fixtures from
+  live 1.2.8 and from 1.2.0–1.2.3 show three gates and the loader refusal as
+  they are. Rescued, each shows ONE gate and unlocks to the whole deck.
+
+
+## 2026-10-17 — the loader reads what the app published: running, locked or refused
+
+The compressed shell's loader (scripts/postbuild-compress.mjs) runs the app
+through a cascade: an inline classic script, then `new Function`, then a blob
+import. After each path it decides whether the app ran by reading
+`window.bento`. It used to read `window.bento.doc` alone.
+
+An encrypted deck's app is still at its password gate when the path returns,
+so it had published nothing. Every path read as refused, the app ran once per
+path (three password cards), and the loader painted "every loader path was
+refused" over all of them. Measured in Chromium and WebKit: released slides
+1.2.0 through 1.2.8 cannot open a password-protected deck. 1.1.0 and 1.0.19 can.
+The cascade first shipped in 1.2.0, since there was no 1.1.1 release.
+
+**The contract.** An app publishes `window.bento` before it hands control back
+to the loader:
+- `{ doc, … }` while running;
+- `{ format, locked: true }` while waiting at its password gate, set
+  synchronously BEFORE the gate is shown and replaced wholesale on unlock;
+- `{ format, refused: true }` after painting its OWN refusal of a file it will
+  not open. It may throw afterwards.
+
+Any of the three means the app ran: no later path runs it again, and the loader
+paints nothing. The loader's failure card is only for an app that published
+nothing at all. The decision is made from what was published, not from whether
+the app threw, so `runNow` and the blob step check `mounted()` after a throw
+too.
+
+The apps: slides sets `locked` (this change). Spaces sets `locked` on its own
+branch. Type will set `refused` once security clears its finding in that code.
+
+Guards: `scripts/test-shell-loader-published-browser.mjs` builds toy shells with
+the real postbuild script, for each state and with every path, blob only, and an
+`import.meta` bundle. `scripts/test-slides-encrypted-open-browser.mjs` tests the
+real deck.
+
+`docs/PLATFORM.md` is where cross-app invariants live, and it is the
+maintainer's to edit. This contract belongs there once the maintainer agrees.

@@ -1346,6 +1346,14 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   `#2e353f`) and text fields, selects and inputs are a shade lighter
   (`#12151a`, was `#10141a`) — the values slides uses. A page's design keeps
   its own colours.
+- **Every field looks like slides' fields.** Text fields, selects and text
+  boxes in the panels, dialogs and popovers now share the look slides uses: a
+  thin border, rounded corners, the theme's field colour, 26px tall, and an
+  amber ring when focused. Before this, the page inspector's **Also known as**
+  field and the **Save as template** name field showed the browser's grey,
+  square, sunken box. In dark theme, the **Replace from JSON** box was white,
+  and the link card, view filter and Add property fields sat on a different
+  shade from the rest.
 
 ## [0.1.0] — 2026-08-03
 
