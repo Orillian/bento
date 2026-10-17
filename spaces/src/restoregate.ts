@@ -71,30 +71,7 @@ export function gateRestored(
 ): Gated {
   const g = gateOnly(json, live)
   if (!g.ok) return g
-  const incoming = direction === 'recover' ? asWholeRecovery(g.doc) : g.doc
-  return { ok: true, doc: applyRestore(live, incoming, direction, rulesFor(direction), restoreAt(live, incomingAt)) }
-}
-
-/**
- * The recovery path only ('recover', RECOVER_RULES — the whole-snapshot
- * path): a snapshot with NO `revisions` means the person CLEARED them.
- *
- * The snapshot is kernel autosave's `contentOnly(doc)`, the WHOLE document, so
- * a missing key is a deleted one. When this was written the kernel kept an
- * ABSENT history field live before any hook ran, so Restore brought back
- * drafts Clear history had removed; the absence is therefore stated as `[]`,
- * which history.ts `revisionsRecover` reads as "cleared" and answers by
- * removing the key. Since kernel #726 a whole snapshot removes an absent
- * history key itself, so this is now REDUNDANT (same result) and kept as a
- * second guard; removing it is a separate follow-up.
- *
- * `trail` is NOT normalised, and RECOVER_RULES opts it out of #726's removal
- * (keepLiveWhenAbsent: ['trail']): a whole snapshot with no trail means "no
- * rows yet", so the live rows stay.
- */
-export function asWholeRecovery(doc: SpacesDoc): SpacesDoc {
-  if ((doc as { revisions?: unknown }).revisions !== undefined) return doc
-  return { ...doc, revisions: [] } as SpacesDoc
+  return { ok: true, doc: applyRestore(live, g.doc, direction, rulesFor(direction), restoreAt(live, incomingAt)) }
 }
 
 /** The gate itself — bounded, prototype-safe, this space's docId, parseDoc,
@@ -156,9 +133,10 @@ export function restoreInto(store: Store, json: unknown, direction: RestoreDirec
   if (store.readOnly) return false
   const g = gateOnly(json, store.doc)
   if (!g.ok) return false
-  // 'recover' is the whole-snapshot path: an absent `revisions` was cleared
-  const incoming = direction === 'recover' ? asWholeRecovery(g.doc) : g.doc
-  store.replaceDoc(incoming, direction, restoreAt(store.doc, incomingAt))
+  // On 'recover' (RECOVER_RULES, a WHOLE snapshot) the kernel removes an
+  // absent `revisions` itself (#726): the person cleared it, and cleared stays
+  // cleared. Only `trail` opts out (keepLiveWhenAbsent).
+  store.replaceDoc(g.doc, direction, restoreAt(store.doc, incomingAt))
   return true
 }
 
