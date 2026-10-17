@@ -10467,4 +10467,11 @@ the file's own app.
   added again; a first-page preview is regenerated on the next save, and
   encrypted files never have one.
 - An app with no published release says so plainly.
+- **Never onto a shell that cannot open the file.** `ENC_OPEN_MIN` holds the
+  oldest release of each app that opens encrypted files (slides 1.2.9; 1.2.0–
+  1.2.8 all refuse). An encrypted file is not moved onto an older latest
+  release, so the rescue only goes live with 1.2.9. Plain files may still
+  move onto 1.2.8. Measured on slides' hotfix build: encrypted fixtures from
+  live 1.2.8 and from 1.2.0–1.2.3 show three gates and the loader refusal as
+  they are. Rescued, each shows ONE gate and unlocks to the whole deck.
 

@@ -18,7 +18,8 @@ pre-1.0.
   app. It never asks for the password and never decrypts anything. Open the
   new file and enter your password as usual. It works for any Bento file
   whose app has a published release, encrypted or not. As always, nothing is
-  uploaded.
+  uploaded. An encrypted deck is only moved onto a release that can open it
+  (1.2.9 or later).
 
 ## [1.2.8] — 2026-10-16
 

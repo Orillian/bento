@@ -13,7 +13,7 @@
 
 import { pptxToBento, LimitError } from './api.ts'
 import { bentoToPptx } from './export.ts'
-import { extractDoc, spliceIntoShell, spliceVerbatim, fileApp, APPS } from './deliver.ts'
+import { extractDoc, spliceIntoShell, spliceVerbatim, fileApp, opensEncrypted, APPS } from './deliver.ts'
 import type { FidelityReport } from './report.ts'
 import type { BentoDoc } from '../../slides/src/model.ts'
 
@@ -90,7 +90,7 @@ export function describe(d: Detected): { title: string; meta: string } {
   const app = APP_NAMES[d.format] ?? d.format
   if (d.format === 'bento/enc') {
     const own = fileApp(d.text)
-    return { title: d.name, meta: `A password-protected ${own ? APPS[own].name : 'Bento'} file` }
+    return { title: d.name, meta: `A password-protected ${own ? APPS[own].name : 'Bento'} file. It can be moved to the latest version without the password: it stays encrypted.` }
   }
   const title = typeof d.doc.title === 'string' && d.doc.title ? d.doc.title : d.name
   const slides = Array.isArray(d.doc.slides) ? d.doc.slides.filter((s) => !(s as { stateOf?: unknown })?.stateOf).length : 0
@@ -261,6 +261,8 @@ export const CONVERSIONS: Conversion[] = [
         throw e
       }
       const r = spliceVerbatim(s.html, d.text, appId)
+      if (r.encrypted && !opensEncrypted(appId, s.version))
+        throw new Error(`the latest ${APPS[appId].name} is ${s.version}, which can’t open password-protected files either. The fixed version isn’t out yet; try again once it is. Your file is unchanged`)
       const report = emptyReport()
       if (r.packsLeft) {
         report.entries.push({ code: 'language-packs-not-carried', verdict: 'approximated', where: 'document',

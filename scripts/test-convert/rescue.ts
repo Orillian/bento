@@ -109,6 +109,14 @@ console.log('on the page: the conversion table')
   ok(/still encrypted/.test(r.meta ?? '') && /no password was needed/.test(r.meta ?? ''), `it says so in words ("${r.meta}")`)
   const plain = detect('deck.bento.html', new TextEncoder().encode(withBlock(SHELL, '\n' + JSON.stringify(doc) + '\n')))
   ok(optionsFor(plain).filter((o) => o.ok).map((o) => o.conversion.id).includes('update-shell'), 'a plain deck is offered it too, beside PowerPoint')
+  const old: Env = { async shell() { return { version: '1.2.8', html: LATEST } } }
+  let mo = ''
+  try { await c.run(d, old) } catch (e) { mo = (e as Error).message }
+  ok(/1\.2\.8, which can’t open password-protected files/.test(mo), `an encrypted deck is NOT moved onto a release that can't open it ("${mo}")`)
+  const r9 = await c.run(d, { async shell() { return { version: '1.2.9', html: LATEST } } })
+  ok(block(new TextDecoder().decode(r9.bytes)) === body, 'onto 1.2.9 it is')
+  const rp = await c.run(plain, old)
+  ok(rp.bytes.length > 0, 'a plain deck may still move onto 1.2.8 (only opening encrypted files was broken)')
   const nope: Env = { async shell() { throw new Error('could not reach the release server (404)') } }
   const sp = detect('notes.bento.html', new TextEncoder().encode(withBlock(SHELL.replace('content="bento-slides"', 'content="bento-spaces"'), '{"format":"bento/spaces","pages":[]}')))
   let m = ''

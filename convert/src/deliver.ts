@@ -68,6 +68,14 @@ export const APPS: Record<string, { key: string; name: string; format: string }>
   'bento-dash': { key: 'dash', name: 'bento/dash', format: 'bento/dash' },
   'bento-type': { key: 'type', name: 'bento/type', format: 'bento/type' },
 }
+/** The oldest release of each app that can OPEN a password-protected file.
+ *  Slides 1.2.0–1.2.8 shipped a loader that refuses every path over the
+ *  password gate, so moving an encrypted deck onto one of those would hand
+ *  back a file exactly as broken as the one dropped. */
+export const ENC_OPEN_MIN: Record<string, string> = { 'bento-slides': '1.2.9' }
+export const opensEncrypted = (appId: string, version: string) =>
+  !ENC_OPEN_MIN[appId] || compareVersions(version, ENC_OPEN_MIN[appId]) >= 0
+
 /** The signed manifest's path for an app, relative to bento.page. */
 export const manifestPath = (appId: string) => `/releases/${APPS[appId].key}/manifest.json`
 
