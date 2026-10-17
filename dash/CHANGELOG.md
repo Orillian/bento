@@ -12,6 +12,12 @@ There is no server, so a break here would be permanent.
 
 The release that came out of watching somebody use 0.2.0.
 
+- **Password-protected workbooks open again.** The file showed its password
+  prompt and then failed with "This file could not start" over it, because the
+  file's loader took the prompt for an app that had not started. Dash now tells
+  the loader it is waiting for a password, and the same for a file it cannot
+  open.
+
 - **Save a copy keeps you on the original.** The copy is written and you go
   on editing the file you opened: ⌘S, the automatic save and the unsaved dot
   all stay with the original, and the message says so. Before, the copy quietly
