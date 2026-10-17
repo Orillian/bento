@@ -1341,6 +1341,11 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   sync engine which document fields are content, so a collaborator's copy only
   ever sends those. A field written by a newer version of Bento is kept in your
   file when it arrives, but never passed on to the rest of the room.
+- **Dark chrome's borders and fields match Bento Slides.** In dark mode the
+  interface's dividers and outlines are a shade lighter (`#333a45`, was
+  `#2e353f`) and text fields, selects and inputs are a shade lighter
+  (`#12151a`, was `#10141a`) — the values slides uses. A page's design keeps
+  its own colours.
 
 ## [0.1.0] — 2026-08-03
 
