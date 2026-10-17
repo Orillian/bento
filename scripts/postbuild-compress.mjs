@@ -456,13 +456,18 @@ const loader = `
 (async () => {${diag ? DIAG : ''}
   var violations = 0
   document.addEventListener('securitypolicyviolation', function () { violations++ })
-  var fail = function (msg) {
+  // Two ways to fill the card, kept apart: fail() takes the loader's OWN fixed
+  // markup (the unsupported-browser notice), failText() takes anything built
+  // from an error, whose message the loader does not control, as plain text.
+  var card = function () {
     var d = document.createElement('div')
     d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0D1B2E;color:#F2F0EA;font:16px/1.6 sans-serif;text-align:center;padding:40px;z-index:99999'
-    d.innerHTML = msg
     document.body.appendChild(d)
     var s = document.getElementById('bento-splash'); if (s) s.remove()
+    return d
   }
+  var fail = function (html) { card().innerHTML = html }
+  var failText = function (text) { card().textContent = text }
   if (${inflateMode === 'js' ? "typeof Uint8Array === 'undefined' || typeof TextDecoder === 'undefined'" : inflateMode === 'native' ? "typeof DecompressionStream === 'undefined'" : 'false'}) {
     // The old text said "2023 or later" and then listed Chrome 80, which is
     // 2020 — a reader checking their version against it learns nothing. It also
@@ -526,11 +531,24 @@ const loader = `
     // report arrives in a later task and is counted, but nothing waits for
     // it). Then new Function, also synchronous. Only the blob import is a
     // promise, and it is the last resort.
-    var mounted = function () { return !!(window.bento && window.bento.doc) }
+    // THE CONTRACT: an app publishes window.bento before it hands control back,
+    //   { doc, … }                 running;
+    //   { format, locked: true }   waiting at its password gate (no doc yet);
+    //   { format, refused: true }  it painted its OWN refusal (a file it will
+    //                              not open) — it may throw afterwards.
+    // Any of the three means the app ran: no later path runs it again and the
+    // loader paints nothing. The loader's card is only for "nothing ran at all".
+    // Reading doc alone made every path of an encrypted file "fail", re-run the
+    // app (one gate per path) and end on the failure card (1.2.4–1.2.8). What
+    // the app PUBLISHED decides, not whether it threw: the check runs after a
+    // throw too.
+    var mounted = function () { return !!(window.bento && (window.bento.doc || window.bento.locked || window.bento.refused)) }
     var runNow = function (name, fn) {
       if (mounted()) return true
-      try { fn() } catch (e) { tried.push(name + ': ' + (e && e.name) + ': ' + (e && e.message))${diag ? `; say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}; return false }
+      var threw = false
+      try { fn() } catch (e) { threw = true; tried.push(name + ': ' + (e && e.name) + ': ' + (e && e.message))${diag ? `; say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''} }
       var okp = mounted()
+      if (threw && !okp) return false
       tried.push(name + (okp ? ': ok' : ': ran, no app (refused, or the app did not mount)'))${diag ? `
       say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}
       if (okp) path = name
@@ -572,7 +590,8 @@ const loader = `
         await import(url)
       } catch (e) { why = why || ((e && e.name) + ': ' + (e && e.message)) }
       document.removeEventListener('securitypolicyviolation', onv)
-      var okb = !why && mounted()
+      // published counts even if the module then threw (a refusal may throw)
+      var okb = mounted()
       tried.push('blob' + (okb ? ': ok' : why ? ': ' + why : ': imported, no app'))${diag ? `
       say('loader path blob → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}
       if (okb) path = 'blob'
@@ -622,7 +641,7 @@ const loader = `
     await import(url)`}
   } catch (e) {${diag ? `
     say('BOOT FAILED: ' + (e && e.name) + ': ' + (e && e.message) + (e && e.stack ? ' | ' + String(e.stack).split('\\n').slice(0, 3).join(' | ') : ''), true)` : ''}
-    fail('This file could not start: ' + (e && e.message ? e.message : e))
+    failText('This file could not start: ' + (e && e.message ? e.message : e))
   }
 })()
 `
