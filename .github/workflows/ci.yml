@@ -2545,6 +2545,31 @@ jobs:
         # browser-dressed field must be flagged.
         run: node scripts/test-dash-fields-browser.mjs
 
+  dash-gate-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install browser test runtime
+        # Pinned outside app packages: browser automation is not shipped in documents.
+        run: |
+          npm install --prefix "$RUNNER_TEMP/bento-browser" --no-package-lock --ignore-scripts playwright@1.61.1
+          "$RUNNER_TEMP/bento-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/bento-browser/node_modules/playwright/index.mjs" >> "$GITHUB_ENV"
+      - name: Build the tested standalone document
+        run: |
+          npm ci --prefix dash
+          npm run build:single --prefix dash
+      - name: An encrypted or unopenable dash file opens to its gate
+        # window.bento = { format, locked: true } before the password gate and
+        # the refusal page, so the shell's loader counts the app as mounted
+        # instead of re-running it and failing over the gate; unlocking
+        # replaces it with the real workbook.
+        run: node scripts/test-dash-gate-browser.mjs
+
   spaces-save-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -2574,3 +2599,5 @@ jobs:
         # the shared field look and amber focus ring in light, dark and
         # OS-dark, never the UA's dress. "Also known as" shipped in it.
         run: node scripts/test-spaces-fields-browser.mjs
+      - name: An encrypted space opens (one password gate, no loader failure)
+        run: node scripts/test-spaces-encrypted-browser.mjs
