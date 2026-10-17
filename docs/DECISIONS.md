@@ -10434,3 +10434,37 @@ choices are dash's and are recorded because a later change could undo them:
   must never cost the copy. It stays for the next open, as ✕ already left it.
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
+
+## 2026-10-17 — Rescue: a file moved onto the latest shell of its own app, its document block carried byte for byte
+
+Slides 1.2.4–1.2.8 cannot open password-protected decks: the loader refuses
+every path over the password gate. A fixed shell can't reach those files,
+because About → Update runs inside the app and the file never boots.
+bento.page/convert therefore offers every Bento `.bento.html` "The same
+file, on the latest version". `deliver.ts spliceVerbatim` puts the file's
+`#bento-doc` block, BYTE FOR BYTE, into the newest signed and pinned shell of
+the file's own app.
+
+- **Never parsed into a document, never re-serialised, never decrypted.** A
+  `bento/enc` envelope stays exactly as it was, so no password is involved.
+  The rig decrypts the carried envelope with the original password to prove
+  it was untouched. A re-serialising splice was hidden by compact-JSON
+  fixtures (JSON.stringify reproduces them byte for byte), so the rig also
+  carries a pretty-printed envelope and a plain deck with `\u003c` escapes.
+  A re-serialising mutant fails on both, and the splice's own read-back
+  refuses it.
+- **Which app:** the file's shell `<meta name="generator">`, or, for a plain
+  file from a shell older than that tag, the document's format. The signed
+  manifest's `app` and the downloaded shell's generator must both match the
+  file's, or the rescue is refused. `fetchVerifiedShell` takes the app id; the
+  version floor stays slides-only.
+- **Refused rather than guessed:** a block containing a raw `<` (every Bento
+  writer escapes it, and a raw one could change how the new shell parses),
+  an empty block, a block that isn't JSON, and a document whose format isn't
+  the app's.
+- **Carried:** the block and the file's own `<title>`. **Not carried:**
+  anything else the old shell held. Language packs are reported and can be
+  added again; a first-page preview is regenerated on the next save, and
+  encrypted files never have one.
+- An app with no published release says so plainly.
+

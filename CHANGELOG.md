@@ -11,6 +11,15 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **A password-protected deck that won't open can be moved to the latest
+  version on bento.page/convert.** Drop the `.bento.html` and choose "The
+  same file, on the latest version". The page puts the file's document,
+  still encrypted and byte for byte, into the newest signed release of its
+  app. It never asks for the password and never decrypts anything. Open the
+  new file and enter your password as usual. It works for any Bento file
+  whose app has a published release, encrypted or not. As always, nothing is
+  uploaded.
+
 ## [1.2.8] — 2026-10-16
 
 - **Indent and outdent bullets.** While editing text, Tab moves the bullet
