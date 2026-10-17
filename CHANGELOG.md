@@ -36,6 +36,13 @@ pre-1.0.
   agent whose table had no style settings stopped the properties panel from
   opening; it now uses the default style.
 
+- **Every text field looks the same.** Text boxes, dropdowns and text areas
+  across the editor share one look: the same height, rounded corners, border
+  and background, and Bento's amber focus ring instead of the browser's blue.
+  The Appearance menu no longer has the browser's plain look, and in the dark
+  theme the speaker notes, comment replies, position and size boxes, chart JSON
+  and the Share name field no longer show a grey browser fill.
+
 ## [1.2.8] — 2026-10-16
 
 - **Indent and outdent bullets.** While editing text, Tab moves the bullet
