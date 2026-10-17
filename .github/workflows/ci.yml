@@ -2582,3 +2582,5 @@ jobs:
         # the shared field look and amber focus ring in light, dark and
         # OS-dark, never the UA's dress. "Also known as" shipped in it.
         run: node scripts/test-spaces-fields-browser.mjs
+      - name: An encrypted space opens (one password gate, no loader failure)
+        run: node scripts/test-spaces-encrypted-browser.mjs
