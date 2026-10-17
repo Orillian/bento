@@ -10434,3 +10434,43 @@ choices are dash's and are recorded because a later change could undo them:
   must never cost the copy. It stays for the next open, as ✕ already left it.
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
+
+
+## 2026-10-17 — the loader reads what the app published: running, locked or refused
+
+The compressed shell's loader (scripts/postbuild-compress.mjs) runs the app
+through a cascade: an inline classic script, then `new Function`, then a blob
+import. After each path it decides whether the app ran by reading
+`window.bento`. It used to read `window.bento.doc` alone.
+
+An encrypted deck's app is still at its password gate when the path returns,
+so it had published nothing. Every path read as refused, the app ran once per
+path (three password cards), and the loader painted "every loader path was
+refused" over all of them. Measured in Chromium and WebKit: released slides
+1.2.0 through 1.2.8 cannot open a password-protected deck. 1.1.0 and 1.0.19 can.
+The cascade first shipped in 1.2.0, since there was no 1.1.1 release.
+
+**The contract.** An app publishes `window.bento` before it hands control back
+to the loader:
+- `{ doc, … }` while running;
+- `{ format, locked: true }` while waiting at its password gate, set
+  synchronously BEFORE the gate is shown and replaced wholesale on unlock;
+- `{ format, refused: true }` after painting its OWN refusal of a file it will
+  not open. It may throw afterwards.
+
+Any of the three means the app ran: no later path runs it again, and the loader
+paints nothing. The loader's failure card is only for an app that published
+nothing at all. The decision is made from what was published, not from whether
+the app threw, so `runNow` and the blob step check `mounted()` after a throw
+too.
+
+The apps: slides sets `locked` (this change). Spaces sets `locked` on its own
+branch. Type will set `refused` once security clears its finding in that code.
+
+Guards: `scripts/test-shell-loader-published-browser.mjs` builds toy shells with
+the real postbuild script, for each state and with every path, blob only, and an
+`import.meta` bundle. `scripts/test-slides-encrypted-open-browser.mjs` tests the
+real deck.
+
+`docs/PLATFORM.md` is where cross-app invariants live, and it is the
+maintainer's to edit. This contract belongs there once the maintainer agrees.
