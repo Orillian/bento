@@ -92,6 +92,28 @@ try {
   ok(!after.locked && after.gates === 0 && !after.failure, 'unlocked: the real window.bento replaces the stub; no gate or failure card left')
   ok(errors.length === 0 && errs2.length === 0, `no runtime errors (${[...errors, ...errs2].join(' | ')})`)
   await ctx2.close()
+
+  // ---- 4. a file spaces REFUSES opens to one explanation, not the loader's ---
+  // The same mount question with the other answer: a document block that is
+  // not a space gets spaces' own "could not be opened" card (with its "Save an
+  // untouched copy…" escape), published as `refused` so the loader stops.
+  const broken = html.replace(/(<script\b[^>]*id="bento-doc"[^>]*>)[\s\S]*?(<\/script>)/i, '$1{"format":"bento/spaces","version":1,"pages":"not a list"}$2')
+  const bad = join(dir, 'refused.bento.html')
+  writeFileSync(bad, broken)
+  const ctx3 = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  await ctx3.route(/^https?:/, (route) => route.abort())
+  const p3 = await ctx3.newPage()
+  await p3.goto('file://' + bad)
+  await p3.waitForSelector('.sp-gate', { timeout: 15000 }).catch(() => {})
+  await p3.waitForTimeout(1500)
+  const ref = await p3.evaluate(() => ({
+    gates: document.querySelectorAll('.sp-gate').length,
+    failure: /could not start/i.test(document.body.innerText),
+    refused: window.bento?.refused === true && !window.bento?.doc,
+  }))
+  ok(ref.gates === 1, `a refused file shows exactly ONE "could not be opened" card (${ref.gates})`)
+  ok(!ref.failure && ref.refused, 'no loader failure card over it; window.bento says refused')
+  await ctx3.close()
 } finally { await browser.close() }
 
 console.log(`${checks - failures}/${checks} checks passed`)
