@@ -10434,3 +10434,27 @@ choices are dash's and are recorded because a later change could undo them:
   must never cost the copy. It stays for the next open, as ✕ already left it.
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
+
+## 2026-10-17 — dash adopts the suite's one field look
+
+Dash copies slides' `THE FIELD` block as written, into `dash/src/styles.css`
+(see "the suite's one field look, set in slides"). What is dash's own:
+
+- **`--field` is `var(--surface)`.** It's the fill dash's fields have always
+  had, so dark theme keeps dash's palette instead of importing slides' value.
+  `--accent-ink` was already defined, and the ring uses it, not `--blue`. Dark
+  amber passes the 3:1 that WCAG 2.2 SC 1.4.11 asks of a focus indicator.
+- **One exception, by class: `.dx-title`**, the ghost workbook title, as in
+  slides. The boot password gate reuses that class and stays as it is.
+- **Formerly ghost fields are now ordinary fields:** the formula bar, tab
+  rename and the story caption. Each had been boxless at rest. Recording why:
+  only the title is a ghost, so anything else that should be one needs a reason
+  here.
+- **Context rules only size.** Every `:focus { outline: none }` is gone; it
+  would outrank the zero-specificity ring and remove it. The "colour not set"
+  strike on a colour well is now a `background-image` over the fill, because
+  the `background` shorthand reset the fill.
+
+`scripts/test-dash-fields-browser.mjs` is slides' rig ported to 17 dash
+surfaces. Its five mutations are slides' own, and each fails it.
+

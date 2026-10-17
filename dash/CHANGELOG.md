@@ -12,6 +12,13 @@ There is no server, so a break here would be permanent.
 
 The release that came out of watching somebody use 0.2.0.
 
+- **Every field looks the same, in light and dark.** Text fields, selects,
+  text areas and colour wells across dash share one look: the same border,
+  fill, corners and height, and the same focus ring. It matches slides. Before,
+  each panel and dialog styled its own fields, so they drifted apart. The
+  formula bar, tab rename and story captions were boxless until hovered, and
+  are now ordinary fields.
+
 - **Save a copy keeps you on the original.** The copy is written and you go
   on editing the file you opened: ⌘S, the automatic save and the unsaved dot
   all stay with the original, and the message says so. Before, the copy quietly
