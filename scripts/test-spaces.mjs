@@ -83,6 +83,7 @@ const RIGS = [
   { name: 'save-browser', file: 'scripts/test-spaces-save-browser.mjs' },
   // every chrome field styled, light and dark — the built shell in Chromium
   { name: 'fields-browser', file: 'scripts/test-spaces-fields-browser.mjs' },
+  { name: 'encrypted-browser', file: 'scripts/test-spaces-encrypted-browser.mjs' },
   // drives the BUILT shell in Chrome; self-skips outside CI without one
   { name: 'chrome',  file: 'scripts/test-spaces-chrome.ts' },
 ]
