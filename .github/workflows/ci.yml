@@ -553,6 +553,14 @@ jobs:
         # file carrying a script tag.
         run: node scripts/test-preview.ts
 
+      - name: Encrypted-title rig
+        # An encrypted file must not announce its subject in plaintext: the
+        # <title> and the suggested download filename both used to derive from
+        # the document title. Pins that encrypted output gets a generic title
+        # and a neutral filename (source gate, always on), with a whole-file
+        # scan where a DOM is present.
+        run: node scripts/test-enc-title.ts
+
       - name: sidebar multi-select — a block move keeps order and carries states
         # Discussion #514. The unit is a parent with its states; the old
         # single-index splice left states behind, which this rig shows.
