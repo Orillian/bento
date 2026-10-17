@@ -152,8 +152,19 @@ function serializeBody(shell: Document, body: string, doc: KernelDoc): string {
 
   writePreview(clone, body, doc)
 
+  // An encrypted file must not carry the document title in plaintext: the
+  // <title> would sit in the file beside the ciphertext that exists to hide the
+  // content, readable by anything that lists the file. Same veto as the preview
+  // (previewAllowed covers both the live password flag and an already-encrypted
+  // body), so write a generic title — the app name — instead. This touches only
+  // the CLONE written to disk; the live tab's title is set elsewhere and keeps
+  // the real title after unlock.
   const titleEl = clone.querySelector('title')
-  if (titleEl) titleEl.textContent = doc.title + ' — ' + appConfig().appName
+  if (titleEl) {
+    titleEl.textContent = previewAllowed(body)
+      ? doc.title + ' — ' + appConfig().appName
+      : appConfig().appName
+  }
 
   const html = '<!DOCTYPE html>\n' + clone.documentElement.outerHTML
   // Belt-and-braces: an unescaped close tag anywhere in generated output would
@@ -519,7 +530,11 @@ export async function serializeAuto(doc: KernelDoc): Promise<string> {
 }
 
 export function suggestedFileName(doc: KernelDoc, suffix = ''): string {
-  const base = doc.title.replace(/[^\w\d-]+/g, '_').replace(/^_+|_+$/g, '') || 'Untitled'
+  // An encrypted deck should not carry its title in the download filename
+  // either — use a neutral default (the app name). The real title is kept in the
+  // live tab and returns to the filename once the password is cleared.
+  const source = isEncryptionActive() ? appConfig().appName : doc.title
+  const base = source.replace(/[^\w\d-]+/g, '_').replace(/^_+|_+$/g, '') || 'Untitled'
   return `${base}${suffix ? `-${suffix}` : ''}.bento.html`
 }
 
