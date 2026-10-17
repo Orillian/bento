@@ -520,11 +520,24 @@ const loader = `
     // report arrives in a later task and is counted, but nothing waits for
     // it). Then new Function, also synchronous. Only the blob import is a
     // promise, and it is the last resort.
-    var mounted = function () { return !!(window.bento && window.bento.doc) }
+    // THE CONTRACT: an app publishes window.bento before it hands control back,
+    //   { doc, … }                 running;
+    //   { format, locked: true }   waiting at its password gate (no doc yet);
+    //   { format, refused: true }  it painted its OWN refusal (a file it will
+    //                              not open) — it may throw afterwards.
+    // Any of the three means the app ran: no later path runs it again and the
+    // loader paints nothing. The loader's card is only for "nothing ran at all".
+    // Reading doc alone made every path of an encrypted file "fail", re-run the
+    // app (one gate per path) and end on the failure card (1.2.4–1.2.8). What
+    // the app PUBLISHED decides, not whether it threw: the check runs after a
+    // throw too.
+    var mounted = function () { return !!(window.bento && (window.bento.doc || window.bento.locked || window.bento.refused)) }
     var runNow = function (name, fn) {
       if (mounted()) return true
-      try { fn() } catch (e) { tried.push(name + ': ' + (e && e.name) + ': ' + (e && e.message))${diag ? `; say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}; return false }
+      var threw = false
+      try { fn() } catch (e) { threw = true; tried.push(name + ': ' + (e && e.name) + ': ' + (e && e.message))${diag ? `; say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''} }
       var okp = mounted()
+      if (threw && !okp) return false
       tried.push(name + (okp ? ': ok' : ': ran, no app (refused, or the app did not mount)'))${diag ? `
       say('loader path ' + name + ' → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}
       if (okp) path = name
@@ -566,7 +579,8 @@ const loader = `
         await import(url)
       } catch (e) { why = why || ((e && e.name) + ': ' + (e && e.message)) }
       document.removeEventListener('securitypolicyviolation', onv)
-      var okb = !why && mounted()
+      // published counts even if the module then threw (a refusal may throw)
+      var okb = mounted()
       tried.push('blob' + (okb ? ': ok' : why ? ': ' + why : ': imported, no app'))${diag ? `
       say('loader path blob → ' + tried[tried.length - 1] + ' (t=' + Math.round(performance.now()) + ' ms since navigation)', true)` : ''}
       if (okb) path = 'blob'
