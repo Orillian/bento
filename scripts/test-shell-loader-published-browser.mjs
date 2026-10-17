@@ -41,10 +41,13 @@ const APPS = {
   locked: `${COUNT} window.bento = { format: 'x', locked: true }`,
   refused: `${COUNT} c.textContent = 'This file could not be opened'; window.bento = { format: 'x', refused: true }; throw new Error('app: unreadable file')`,
   nothing: `${COUNT} throw new Error('app: crashed before publishing')`,
+  // the loader's failure message is plain text: an error message carrying
+  // markup reaches the card as characters, never as an element
+  markup: `${COUNT} throw new Error('app: <img data-rig-injected src="data:,"><b data-rig-injected>bold</b>')`,
 }
 // [ran, card] expected: the first three run once and paint nothing; an app
 // that publishes nothing is tried on every path and ends on the card
-const EXPECT = { running: [1, false], locked: [1, false], refused: [1, false], nothing: [null, true] }
+const EXPECT = { running: [1, false], locked: [1, false], refused: [1, false], nothing: [null, true], markup: [null, true] }
 
 function build(name, body) {
   const file = join(dir, `${name}.html`)
@@ -78,10 +81,18 @@ try {
       await p.goto('file://' + file)
       await p.waitForFunction(() => window.bento?.loader || /every loader path/.test(document.body.innerText), null, { timeout: 8000 }).catch(() => {})
       await p.waitForTimeout(200)
-      const r = await p.evaluate(() => ({ runs: window.__runs || 0, cards: document.querySelectorAll('.app-card').length, card: /every loader path/.test(document.body.innerText), path: window.bento?.loader?.path ?? null }))
+      const r = await p.evaluate(() => ({
+        runs: window.__runs || 0, cards: document.querySelectorAll('.app-card').length,
+        card: /every loader path/.test(document.body.innerText), path: window.bento?.loader?.path ?? null,
+        injected: document.querySelectorAll('[data-rig-injected]').length,
+        literal: /<img data-rig-injected/.test(document.body.innerText),
+      }))
       const [runs, card] = EXPECT[kind]
       const wantPath = opts.blobOnly || opts.meta ? 'blob' : 'inline'
-      if (kind === 'nothing') {
+      if (kind === 'markup') {
+        ok(r.card && r.injected === 0 && r.literal,
+          `${kind}: the failure message is plain text — no element made from it, the markup shown as characters (${r.injected} element(s), literal ${r.literal})`)
+      } else if (kind === 'nothing') {
         ok(r.card && !r.path, `${kind}: the loader's failure card, and no path claimed (${r.runs} run(s))`)
       } else {
         ok(r.runs === runs && r.cards === 1 && r.card === card && r.path === wantPath,

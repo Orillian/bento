@@ -450,13 +450,18 @@ const loader = `
 (async () => {${diag ? DIAG : ''}
   var violations = 0
   document.addEventListener('securitypolicyviolation', function () { violations++ })
-  var fail = function (msg) {
+  // Two ways to fill the card, kept apart: fail() takes the loader's OWN fixed
+  // markup (the unsupported-browser notice), failText() takes anything built
+  // from an error, whose message the loader does not control, as plain text.
+  var card = function () {
     var d = document.createElement('div')
     d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0D1B2E;color:#F2F0EA;font:16px/1.6 sans-serif;text-align:center;padding:40px;z-index:99999'
-    d.innerHTML = msg
     document.body.appendChild(d)
     var s = document.getElementById('bento-splash'); if (s) s.remove()
+    return d
   }
+  var fail = function (html) { card().innerHTML = html }
+  var failText = function (text) { card().textContent = text }
   if (${inflateMode === 'js' ? "typeof Uint8Array === 'undefined' || typeof TextDecoder === 'undefined'" : inflateMode === 'native' ? "typeof DecompressionStream === 'undefined'" : 'false'}) {
     // The old text said "2023 or later" and then listed Chrome 80, which is
     // 2020 — a reader checking their version against it learns nothing. It also
@@ -630,7 +635,7 @@ const loader = `
     await import(url)`}
   } catch (e) {${diag ? `
     say('BOOT FAILED: ' + (e && e.name) + ': ' + (e && e.message) + (e && e.stack ? ' | ' + String(e.stack).split('\\n').slice(0, 3).join(' | ') : ''), true)` : ''}
-    fail('This file could not start: ' + (e && e.message ? e.message : e))
+    failText('This file could not start: ' + (e && e.message ? e.message : e))
   }
 })()
 `
