@@ -10575,13 +10575,20 @@ hooks, on `trail` and `revisions`. The hand-rolled keep-live in `store.ts` and
   the rule below, Restore on the banner brought the cleared drafts back, and
   the next copy the person shared carried them. That is a confidentiality
   bug: here confidentiality wins over integrity, behind a banner the person
-  chose to accept. The kernel keeps an absent history key live before any
-  hook runs. That is deliberate, it holds even under `wholeSnapshot`, and the
-  kernel is not this app's to change. So the hook never sees the absence.
-  Instead, `restoregate.ts` `asWholeRecovery` states it as `revisions: []` on
-  the 'recover' path only, before `applyRestore`. `trail` is not normalised:
-  in a whole snapshot, no trail means "no rows yet", and the day-union already
-  keeps the live rows. `trail` goes through `trail.ts` `trailRecover`.
+  chose to accept. Since kernel #726, a whole snapshot removes an absent
+  history key by default, so cleared revisions stay cleared in the kernel
+  itself. Before #726 the kernel kept that key live before any hook ran. For
+  that reason `restoregate.ts` `asWholeRecovery` states an absent `revisions`
+  as `[]` on the 'recover' path, and the hook reads `[]` as cleared. That
+  normalisation is now redundant but harmless, since it gives the same
+  result. It stays for now, and removing it is a separate follow-up.
+
+  **The trail opts out.** `RECOVER_RULES` carries
+  `keepLiveWhenAbsent: ['trail']`, and only `trail`. Nobody clears a trail by
+  leaving it out: a snapshot with no trail means "no rows yet", and the live
+  rows are observations nobody can recompute. `revisions` must never be listed
+  there, because cleared history has to stay cleared. A rig row pins the list
+  to exactly `['trail']`. `trail` goes through `trail.ts` `trailRecover`.
 
 `trailRecover` keeps a day found on one side only. A day on both sides goes
 to the side whose whole document is later: the snapshot's `at` against the
@@ -10607,8 +10614,9 @@ spaces call still states it, because the recovery snapshot is
 top-level key missing from the snapshot was deleted by the person, and it
 stays deleted after recovery. That covers a design, footnotes or a journal
 template removed after the last save. History follows its own rules. A
-snapshot with no `trail` keeps the live rows. A snapshot with no `revisions`
-means they were cleared, as described above. The identity, mode and
+snapshot with no `trail` keeps the live rows, through the
+`keepLiveWhenAbsent` opt-out. A snapshot with no `revisions` means they were
+cleared, as described above. The identity, mode and
 capability floor is unchanged.
 
 Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
@@ -10621,4 +10629,8 @@ Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
 - the revisions hook unbound, or returning the snapshot's list;
 - the absent-to-`[]` normalisation removed;
 - the hook keeping live for `[]`;
-- rule 3 (a foreign live list is kept) dropped.
+- rule 3 (a foreign live list is kept) dropped;
+- `keepLiveWhenAbsent` removed or emptied, which loses the live trail;
+- `'revisions'` added to `keepLiveWhenAbsent`, together with the
+  normalisation removed, which resurrects cleared drafts. With the
+  normalisation still in place, only the pins catch adding `'revisions'`.

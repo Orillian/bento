@@ -80,17 +80,17 @@ export function gateRestored(
  * path): a snapshot with NO `revisions` means the person CLEARED them.
  *
  * The snapshot is kernel autosave's `contentOnly(doc)`, the WHOLE document, so
- * a missing key is a deleted one. The kernel, by design, keeps an ABSENT
- * history field live before any hook runs ("absent never wipes a history
- * field", even under wholeSnapshot) — so the hook can never see the absence,
- * and without this Restore brought back drafts Clear history had removed. The
- * absence is therefore stated as `[]`, which history.ts `revisionsRecover`
- * reads as "cleared" and answers by removing the key. Normalised here rather
- * than in the hook because the hook is never called for an absent key, and the
- * kernel is not ours to change.
+ * a missing key is a deleted one. When this was written the kernel kept an
+ * ABSENT history field live before any hook ran, so Restore brought back
+ * drafts Clear history had removed; the absence is therefore stated as `[]`,
+ * which history.ts `revisionsRecover` reads as "cleared" and answers by
+ * removing the key. Since kernel #726 a whole snapshot removes an absent
+ * history key itself, so this is now REDUNDANT (same result) and kept as a
+ * second guard; removing it is a separate follow-up.
  *
- * `trail` is NOT normalised: a whole snapshot with no trail means "no rows
- * yet", which the day-union already handles by keeping the live rows.
+ * `trail` is NOT normalised, and RECOVER_RULES opts it out of #726's removal
+ * (keepLiveWhenAbsent: ['trail']): a whole snapshot with no trail means "no
+ * rows yet", so the live rows stay.
  */
 export function asWholeRecovery(doc: SpacesDoc): SpacesDoc {
   if ((doc as { revisions?: unknown }).revisions !== undefined) return doc

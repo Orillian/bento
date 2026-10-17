@@ -104,7 +104,17 @@ validateRestoreRules(RESTORE_RULES)
  * mode / capability floor is unchanged. Only 'recover' reads the flag; every
  * 'back' path already drops an absent field.
  */
-export const RECOVER_RULES: RestoreRules = { ...RESTORE_RULES, wholeSnapshot: true }
+export const RECOVER_RULES: RestoreRules = {
+  ...RESTORE_RULES,
+  wholeSnapshot: true,
+  // Since kernel #726 a whole snapshot REMOVES an absent history key (absent =
+  // the person cleared it). That is right for `revisions` — cleared history
+  // must stay cleared, so it is deliberately NOT listed here — but not for
+  // `trail`: nobody "clears" a trail by omission; a snapshot without one means
+  // "no rows yet" (recorded nothing before the crash), and the live rows are
+  // observations nobody can recompute. ONLY 'trail', never 'revisions'.
+  keepLiveWhenAbsent: ['trail'],
+}
 validateRestoreRules(RECOVER_RULES)
 
 /** The rules a direction restores by: the recovery banner's for 'recover'

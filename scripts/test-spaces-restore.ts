@@ -90,6 +90,9 @@ console.log('0. the rules\n')
     '…trail.ts trailRecover and history.ts revisionsRecover')
   ok(RECOVER_RULES.recover === RESTORE_RULES.recover, '…and the recovery rules carry the same hooks')
   ok(!RESTORE_RULES.keepLive, 'no keepLive override in the shared rules (the undo-only assets override lives beside undo)')
+  ok(J(RECOVER_RULES.keepLiveWhenAbsent) === J(['trail']),
+    'RECOVER_RULES.keepLiveWhenAbsent is EXACTLY [\'trail\'] — never revisions (cleared history stays cleared)')
+  ok(RESTORE_RULES.keepLiveWhenAbsent === undefined, '…and the \'back\' rules carry no such list')
   ok(RECOVER_RULES.wholeSnapshot === true && rulesFor('recover') === RECOVER_RULES,
     'the recovery banner passes wholeSnapshot: true EXPLICITLY (a recovery snapshot is the whole document)')
   ok(rulesFor('back') === RESTORE_RULES && RESTORE_RULES.wholeSnapshot === undefined, '\'back\' paths use the shared rules, where the flag does not apply')
@@ -384,13 +387,25 @@ console.log('\n6. trailRecover: the four rows, and the edges\n')
   ok(newer['2026-09-11'].n.todo === 60, 'row 2: a NEWER snapshot wins its shared days')
   ok(newer['2026-09-10'].n.todo === 5 && newer['2026-09-14'].n.todo === 9 && newer['2026-09-15'].n.todo === 10,
     'row 2: …and every day on one side only is kept')
-  // 3. a snapshot WITHOUT trail leaves live intact (through the real path: the
-  //    kernel keeps live before any hook runs)
+  // 3. a snapshot WITHOUT trail leaves live intact (through the real path:
+  //    since kernel #726 a whole snapshot removes an absent history key, and
+  //    RECOVER_RULES opts trail out — keepLiveWhenAbsent: ['trail'])
   const live = mk({ trail: clone(L) })
   const snap = snapOf(live); delete snap.trail; snap.pages[0].blocks[0].html = 'z'
   const s = new Store(live)
   ok(recoverInto(s, { json: J(snap), at: LIVE_MS + HOUR }) && J(s.doc.trail) === J(L),
     'row 3: a snapshot WITHOUT a trail leaves the live trail intact')
+  // the opt-out is trail's ONLY: in the SAME whole snapshot, absent revisions
+  // are still removed (cleared), and the trail is kept byte-for-byte
+  {
+    const live2 = mk({ trail: clone(L), revisions: [{ id: 'r0', at: '2026-09-01T00:00:00Z', body: { a: 1 } }] })
+    const trailBytes = J(live2.trail)
+    const snap2 = snapOf(live2); delete snap2.trail; delete snap2.revisions; snap2.pages[0].blocks[0].html = 'whole, no history'
+    const s2 = new Store(live2)
+    ok(recoverInto(s2, { json: J(snap2), at: LIVE_MS + HOUR }), 'a whole recovery snapshot with NO trail and NO revisions applies')
+    ok(J(s2.doc.trail) === trailBytes, '…the live trail is kept byte-for-byte (keepLiveWhenAbsent: trail)')
+    ok(!Object.hasOwn(s2.doc, 'revisions'), '…while the absent revisions are still REMOVED (cleared stays cleared)')
+  }
   // tie → live
   const tie = trailRecover(L, { '2026-09-11': row(60) }, { live: LIVE_MS, incoming: LIVE_MS }) as Trail
   ok(tie['2026-09-11'].n.todo === 6, 'a TIE keeps live')
@@ -509,7 +524,8 @@ console.log('\n8. every entry point names its direction\n')
   ok(!/keepLiveIdentity|keepLiveHistory/.test(store + gate), 'no hand-rolled keep-live remains in store.ts or restoregate.ts')
   ok(/applyRestore\(this\.doc, JSON\.parse\(entry\.json\) as SpacesDoc, 'back', UNDO_RULES\)/.test(store), 'undo/redo: one applyRestore, \'back\', with the undo-only rules')
   ok(/keepLive: \{ assets: 'live' \}/.test(store), '…whose only override is the assets pool')
-  ok(/RECOVER_RULES: RestoreRules = \{ \.\.\.RESTORE_RULES, wholeSnapshot: true \}/.test(store), 'the recovery rules state wholeSnapshot: true in source')
+  ok(/RECOVER_RULES: RestoreRules = \{\s*\.\.\.RESTORE_RULES,\s*wholeSnapshot: true,[\s\S]{0,800}?keepLiveWhenAbsent: \['trail'\],\s*\}/.test(store),
+    'the recovery rules state wholeSnapshot: true and keepLiveWhenAbsent: [\'trail\'] in source')
   ok(/recover: \{ trail: trailRecover, revisions: revisionsRecover \}/.test(store), 'both recover hooks are bound in source')
 }
 
