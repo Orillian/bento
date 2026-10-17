@@ -10435,6 +10435,43 @@ choices are dash's and are recorded because a later change could undo them:
   `recoveryLooksOlder` is read against the workbook AS LOADED, because dash
   stamps `modified` on every edit.
 
+
+## 2026-10-17 — the suite's one field look, set in slides
+
+Every text field, select and textarea in an app's chrome wears one look. The
+rule is the `THE FIELD` block in `slides/src/styles.css`; dash, spaces and type
+copy that block as it stands rather than restyling fields one by one:
+
+- the selector is `:where(…)` over every `input` except checkbox, radio,
+  range, file, colour, button types and hidden, plus `select` and `textarea`;
+  colour inputs get the same border, fill and radius from their own block;
+- 1px solid `--line` border, `--field` fill, `--ink` text, 6px radius,
+  `font: inherit` at 12.5px, 26px tall (border-box, `padding: 0 6px`);
+  textareas are `height: auto` with `padding: 6px 8px` and `line-height: 1.5`;
+- focus is `:focus-visible` → `outline: 2px solid var(--accent-ink);
+  outline-offset: -1px`. The ring sits on the border, so a scroll container
+  cannot clip it.
+
+Two choices here could be undone by accident:
+
+- **Zero specificity, no class.** A field that needs a class to look right
+  comes out in the browser's dress the day someone forgets it. That had
+  happened five times in slides: in dark theme those fields had the browser's
+  `#3b3b3b` fill, and About's theme select had the whole UA look (square, grey
+  `#767676` border, 19px tall). Context rules now only SIZE a field (width,
+  flex, monospace font); they never restate its look.
+- **Two deliberate exceptions, by class.** The deck title is a ghost field (no
+  box at rest, the field's border on hover, its fill once focused). The
+  password gate is its own card on the dark boot splash. Anything else that
+  overrides the look needs a reason recorded here.
+
+`scripts/test-slides-fields-browser.mjs` walks the panel for every element
+kind, the slide panel, About, Replace from JSON, Export images, Encrypt with
+password, the Share popover and the comment popover, in both themes, and fails
+on any field that differs. It plants a field with its author styles reverted
+to prove that the check catches the browser's dress.
+
+
 ## 2026-10-17 — dash adopts the suite's one field look
 
 Dash copies slides' `THE FIELD` block as written, into `dash/src/styles.css`
@@ -10540,3 +10577,97 @@ real deck.
 
 `docs/PLATFORM.md` is where cross-app invariants live, and it is the
 maintainer's to edit. This contract belongs there once the maintainer agrees.
+
+## 2026-10-15 — bento/spaces restores by direction, and a recovery unions the trail by day
+
+Every whole-document restore in bento/spaces now resolves through the kernel's
+`applyRestore` (`kernel/src/docfields.ts`) over one rule set,
+`spaces/src/store.ts` `RESTORE_RULES` = the field-class map plus two recover
+hooks, on `trail` and `revisions`. The hand-rolled keep-live in `store.ts` and
+`restoregate.ts` is gone. Each entry point names its direction:
+
+- **'back'** — undo, redo, a version restore from either timeline, Replace
+  from JSON and `bento.loadDoc`. Content follows. Identity, modes, capability
+  and history keep the live value, so a paste or a version can neither delete
+  this space's history nor install one.
+- **'recover'** — the crash-recovery banner only. `revisions` goes through
+  `history.ts` `revisionsRecover`, which applies these rules in order:
+  1. `[]` means the list was cleared. The hook returns `undefined`, so the
+     key is removed, just as Clear history deletes it rather than storing
+     `[]`.
+  2. A recovered list that is not an array, or that has even one entry
+     failing `readable`, is refused whole, and the live list stands. That
+     entry check is the same one a file's list passes (`historyIsForeign`).
+     A recovery snapshot is foreign input, and before this rule one
+     unreadable entry replaced the live, readable log.
+  3. A foreign live list is never written over (#671). This also keeps a
+     newer build's history intact.
+  4. Otherwise the readable recovered list follows the snapshot. This is the
+     crash case: a revision the last save wrote must survive.
+
+  The hook never merges and never picks entries.
+
+  **Cleared stays cleared.** The recovery snapshot is the whole document, so
+  a snapshot with no `revisions` means the person ran Clear history. Without
+  the rule below, Restore on the banner brought the cleared drafts back, and
+  the next copy the person shared carried them. That is a confidentiality
+  bug: here confidentiality wins over integrity, behind a banner the person
+  chose to accept. Since kernel #726, a whole snapshot removes an absent
+  history key by default, so cleared revisions stay cleared in the kernel
+  itself. Before #726 the kernel kept that key live before any hook ran. For
+  that reason `restoregate.ts` `asWholeRecovery` states an absent `revisions`
+  as `[]` on the 'recover' path, and the hook reads `[]` as cleared. That
+  normalisation is now redundant but harmless, since it gives the same
+  result. It stays for now, and removing it is a separate follow-up.
+
+  **The trail opts out.** `RECOVER_RULES` carries
+  `keepLiveWhenAbsent: ['trail']`, and only `trail`. Nobody clears a trail by
+  leaving it out: a snapshot with no trail means "no rows yet", and the live
+  rows are observations nobody can recompute. `revisions` must never be listed
+  there, because cleared history has to stay cleared. A rig row pins the list
+  to exactly `['trail']`. `trail` goes through `trail.ts` `trailRecover`.
+
+`trailRecover` keeps a day found on one side only. A day on both sides goes
+to the side whose whole document is later: the snapshot's `at` against the
+live `modified`, both in epoch ms. A tie keeps live. A live file with no
+`modified` counts as older. Next, so no day is counted twice, rows are walked
+newest first within each series, and a row whose day falls inside the span
+of a row already kept is dropped. That covers a weekly or monthly bucket
+against single days, and two buckets that overlap. Days are compared as
+labels with `dayIndex`, and only within one series. The result then goes
+through `pruneTrail`. Live's key order is kept, so a snapshot that adds
+nothing raises no banner.
+
+**Undo keeps the asset pool live.** Undo checkpoints omit `assets` for size.
+On 'back', `applyRestore` treats an absent content field as dropped, so a
+checkpoint applied as-is would empty the pool. The undo path alone overrides
+`assets` to 'live' (`UNDO_RULES`). That is what undo did before. A version
+restore and a paste carry their own pool, so there it follows.
+
+**A recovery removes what was removed.** The banner path passes
+`wholeSnapshot: true` explicitly. Kernel #716 made that the default, but the
+spaces call still states it, because the recovery snapshot is
+`contentOnly(doc)`, the whole document. So a content key or an unknown
+top-level key missing from the snapshot was deleted by the person, and it
+stays deleted after recovery. That covers a design, footnotes or a journal
+template removed after the last save. History follows its own rules. A
+snapshot with no `trail` keeps the live rows, through the
+`keepLiveWhenAbsent` opt-out. A snapshot with no `revisions` means they were
+cleared, as described above. The identity, mode and
+capability floor is unchanged.
+
+Verified in `scripts/test-spaces-restore.ts`. Mutations, all red:
+- recovery passed as 'back';
+- Replace from JSON passed as 'recover';
+- the hook returning the snapshot's trail wholesale;
+- the span drop removed;
+- the undo assets override removed;
+- `wholeSnapshot: false` on the recovery path;
+- the revisions hook unbound, or returning the snapshot's list;
+- the absent-to-`[]` normalisation removed;
+- the hook keeping live for `[]`;
+- rule 3 (a foreign live list is kept) dropped;
+- `keepLiveWhenAbsent` removed or emptied, which loses the live trail;
+- `'revisions'` added to `keepLiveWhenAbsent`, together with the
+  normalisation removed, which resurrects cleared drafts. With the
+  normalisation still in place, only the pins catch adding `'revisions'`.
