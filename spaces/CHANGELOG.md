@@ -1341,6 +1341,14 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   sync engine which document fields are content, so a collaborator's copy only
   ever sends those. A field written by a newer version of Bento is kept in your
   file when it arrives, but never passed on to the rest of the room.
+- **Every field looks like slides' fields.** Text fields, selects and text
+  boxes in the panels, dialogs and popovers now share the look slides uses: a
+  thin border, rounded corners, the theme's field colour, 26px tall, and an
+  amber ring when focused. Before this, the page inspector's **Also known as**
+  field and the **Save as template** name field showed the browser's grey,
+  square, sunken box. In dark theme, the **Replace from JSON** box was white,
+  and the link card, view filter and Add property fields sat on a different
+  shade from the rest.
 - **Restoring after a crash keeps the progress record from both copies.**
   When the "Unsaved changes from a previous session" banner restores, every
   day recorded in either the file or the recovered copy is kept. If both have
