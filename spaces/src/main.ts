@@ -82,6 +82,14 @@ const embedded = readEmbeddedDoc()
 const envelope = embedded ? parseEnvelope(embedded) : null
 
 if (envelope) {
+  // MOUNTED, though locked. The shell's loader (scripts/postbuild-compress.mjs)
+  // decides whether this app started by looking for `window.bento`; a space
+  // waiting at its password gate has no document to publish yet, so without
+  // this every loader path read as a failure, each one ran the app AGAIN (a
+  // second and third gate), and the loader's failure card covered the lot — an
+  // encrypted space could not be opened at all. `locked` is the suite's agreed
+  // shape (slides and type set the same); the real object replaces it on unlock.
+  ;(window as unknown as { bento: unknown }).bento = { format: 'bento/spaces', locked: true }
   void passwordGate()
 } else {
   const res = parseDoc(embedded ?? '')

@@ -2472,3 +2472,5 @@ jobs:
         # Real UI and serialization, offline; delayed mock writes expose save races.
         run: |
           node scripts/test-spaces-save-browser.mjs
+      - name: An encrypted space opens (one password gate, no loader failure)
+        run: node scripts/test-spaces-encrypted-browser.mjs

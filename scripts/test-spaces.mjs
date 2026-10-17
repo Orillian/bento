@@ -81,6 +81,7 @@ const RIGS = [
   // built spaces shell and Playwright/Chrome (the CI browser job provides both).
   { name: 'save-revisions', file: 'scripts/test-spaces-save-revisions.ts' },
   { name: 'save-browser', file: 'scripts/test-spaces-save-browser.mjs' },
+  { name: 'encrypted-browser', file: 'scripts/test-spaces-encrypted-browser.mjs' },
   // drives the BUILT shell in Chrome; self-skips outside CI without one
   { name: 'chrome',  file: 'scripts/test-spaces-chrome.ts' },
 ]
