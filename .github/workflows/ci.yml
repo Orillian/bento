@@ -2472,3 +2472,10 @@ jobs:
         # Real UI and serialization, offline; delayed mock writes expose save races.
         run: |
           node scripts/test-spaces-save-browser.mjs
+      - name: One field look in Chromium (spaces)
+        # Port of slides' fields rig: every chrome text field, select and
+        # textarea (inspector incl. "Also known as", dialogs, view popovers,
+        # pickers, Share, comments, a designed space, the password gate) has
+        # the shared field look and amber focus ring in light, dark and
+        # OS-dark, never the UA's dress. "Also known as" shipped in it.
+        run: node scripts/test-spaces-fields-browser.mjs
