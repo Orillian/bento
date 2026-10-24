@@ -58,6 +58,7 @@ const ROW_TIPS: Record<string, string> = {
   'Enter secs': 'How long the entrance takes, in seconds',
   'Reveal step': 'Animate on click: hidden until the n-th → on this slide (0 = shown with the slide)',
   'Count up': 'Numbers in this text count up from zero when the slide enters',
+  'Typewriter': 'Code types in a character at a time, behind a cursor, when it appears',
   'Ambient': 'Continuous motion while the slide is on screen — Ken Burns drift or zoom',
   'Zoom': 'Ken Burns direction — drift, settle out, or settle in',
   'Zoom %': 'How far the Ken Burns zoom travels',
@@ -757,7 +758,7 @@ export class PropsPanel {
     const setFx = (patch: Partial<NonNullable<SlideElement['fx']>>) =>
       this.mutate(el.id, (e) => {
         const fx = { ...(e.fx ?? {}), ...patch }
-        if (!fx.enter && !fx.countUp && !fx.ambient && !fx.loop && !fx.step) delete e.fx
+        if (!fx.enter && !fx.countUp && !fx.ambient && !fx.loop && !fx.step && !fx.typeWriter) delete e.fx
         else e.fx = fx
       }, true)
 
@@ -789,6 +790,9 @@ export class PropsPanel {
     this.row('Count up', this.select(
       ['off', 'on'], el.fx?.countUp ? 'on' : 'off',
       (v) => setFx({ countUp: v === 'on' ? true : undefined })))
+    if (el.type === 'code') this.row('Typewriter', this.select(
+      ['off', 'on'], el.fx?.typeWriter ? 'on' : 'off',
+      (v) => setFx({ typeWriter: v === 'on' ? true : undefined })))
     this.row('Ambient', this.select(
       ['none', 'kenburns'], el.fx?.ambient ?? 'none',
       (v) => setFx(v === 'none' ? { ambient: undefined, ken: undefined } : { ambient: 'kenburns' })))
@@ -2302,7 +2306,7 @@ export class PropsPanel {
         const el = this.store.element(id)
         if (!el) continue
         const fx = { ...(el.fx ?? {}), step: step > 0 ? step : undefined }
-        if (!fx.enter && !fx.countUp && !fx.ambient && !fx.loop && !fx.step) delete el.fx
+        if (!fx.enter && !fx.countUp && !fx.ambient && !fx.loop && !fx.step && !fx.typeWriter) delete el.fx
         else el.fx = fx
       }
     }, true)

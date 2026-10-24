@@ -26,6 +26,11 @@ const MORPH_DURATION_DEFAULT = 0.65
 /** Set per-deck by doc.present.morphSeconds; clamped to something sane. */
 let MORPH_DURATION = MORPH_DURATION_DEFAULT
 const MORPH_EASE = 'power2.inOut'
+const TYPE_WRITER_DURATION_DEFAULT = 0.08
+/** Seconds per typed character, per-deck by doc.present.typeWriterSeconds. */
+let TYPE_WRITER_DURATION = TYPE_WRITER_DURATION_DEFAULT
+/** No typewriter run lasts longer than this; a long snippet types faster. */
+const TYPE_WRITER_MAX_TOTAL = 6
 
 export interface PresentSession {
   exit(): void
@@ -80,6 +85,7 @@ export function startPresentation(
   } = {},
 ): PresentSession {
   MORPH_DURATION = Math.min(6, Math.max(0.1, doc.present?.morphSeconds ?? MORPH_DURATION_DEFAULT))
+  TYPE_WRITER_DURATION = Math.min(1, Math.max(0.08, doc.present?.typeWriterSeconds ?? TYPE_WRITER_DURATION_DEFAULT))
 
   const overlay = document.createElement('div')
   overlay.className = 'bento-present-overlay'
@@ -929,6 +935,7 @@ export function startPresentation(
       const section = slidesEl.children[cur] as HTMLElement | undefined
       const slide = doc.slides[cur]
       if (section && slide) {
+        settleTypeWriter(section)
         anim.killTweensOf(section.querySelectorAll('.bento-el'))
         for (const el of slide.elements) {
           const node = section.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(el.id)}"]`)
@@ -1307,6 +1314,7 @@ export function startPresentation(
       // stuck at its "from" state (invisible) for every future visit.
       anim.killTweensOf(from.querySelectorAll('.bento-el'))
       sweepSymbolSpans(from)
+      settleTypeWriter(from)
       const fromSlide = doc.slides[fromIdx]
       for (const el of fromSlide?.elements ?? []) {
         const node = from.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(el.id)}"]`)
@@ -1436,7 +1444,7 @@ export function startPresentation(
       for (const el of slide.elements) {
         if (stepOf(el) <= steps.step || stepOf(el) > was) continue
         const node = section.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(el.id)}"]`)
-        if (node) { anim.killTweensOf(node); applyElementFrame(node, el); resetXform(node) }
+        if (node) { settleTypeWriter(node); anim.killTweensOf(node); applyElementFrame(node, el); resetXform(node) }
       }
       applyStep(section, slide, steps.step)
     }
@@ -1645,7 +1653,7 @@ function enterSpec(kind: EnterKind, enterDur?: number) {
 function runEnterFx(slide: Slide, section: HTMLElement, only?: Set<string>, revealing = false, atStep = 0) {
   const entering = fxNodes(slide, section)
     // reveal-set members are shown/hidden by hover, never by entrance tweens
-    .filter(([el]) => (el.fx!.enter || el.fx!.countUp || (revealing && only?.has(el.id))) && !el.showOnHover)
+    .filter(([el]) => (el.fx!.enter || el.fx!.countUp || el.fx!.typeWriter || (revealing && only?.has(el.id))) && !el.showOnHover)
     .filter(([el]) => (only ? only.has(el.id) : shownAt(el, atStep)))
     .sort((a, b) => (a[0].fx!.order ?? 0) - (b[0].fx!.order ?? 0))
   // Delay derives from fx.order when set (equal order ⇒ elements enter
@@ -1673,6 +1681,7 @@ function runEnterFx(slide: Slide, section: HTMLElement, only?: Set<string>, reve
       )
     }
     if (fx.countUp) runCountUp(node)
+    if (fx.typeWriter) runTypeWriter(node, [...node.querySelectorAll<HTMLElement>('[data-sym]')], 0.12 + Math.min(step, 24) * 0.05)
   })
   settleGuarantee(entering.map(([el, node]) => [node, el]))
 }
@@ -1738,6 +1747,89 @@ function runCountUp(node: HTMLElement) {
     ease: 'power2.out',
     onUpdate() { inner.textContent = plan(state.p) },
   })
+}
+
+/**
+ * Typewriter (fx.typeWriter, code elements): the tokens appear a character at
+ * a time behind a blinking cursor. Nothing is split — each token span stays
+ * exactly as code.ts rendered it, so its `data-sym` id is the one a plain
+ * code element on the neighbouring slide carries, and a morph between the two
+ * pairs token for token: matched tokens travel, only the NEW text types.
+ * Characters are revealed by clipping the token's box, never by changing its
+ * text, so typing reflows nothing — a token travelling on the same line lands
+ * where the morph measured it.
+ *
+ * Pacing is per character (doc.present.typeWriterSeconds), with the whole run
+ * capped at TYPE_WRITER_MAX_TOTAL: a short snippet types at the authored
+ * speed, a long one speeds up rather than holding the slide for a minute.
+ *
+ * Every run is recorded so it can be SETTLED — finished at once, text whole,
+ * cursor gone — on slide exit, a step back, and reduced motion.
+ */
+const typing = new Map<HTMLElement, () => void>()
+
+function runTypeWriter(node: HTMLElement, tokens: HTMLElement[], delay = 0) {
+  settleTypeWriter(node)
+  const runs: Array<{ span: HTMLElement; start: number; len: number; ink: boolean; shown: number }> = []
+  let total = 0
+  for (const span of tokens) {
+    const len = span.textContent?.length ?? 0
+    if (!len) continue
+    runs.push({ span, start: total, len, ink: span.dataset.tok !== undefined, shown: -1 })
+    total += len
+  }
+  if (!total) return
+  const per = Math.min(TYPE_WRITER_DURATION, TYPE_WRITER_MAX_TOTAL / total)
+  // The cursor exists only while a run does. It is never part of the model
+  // render, so the editor canvas, thumbnails, print and the file preview
+  // cannot show it.
+  const cursor = document.createElement('span')
+  cursor.className = 'bento-code-cursor'
+  cursor.textContent = '▎'
+  cursor.setAttribute('aria-hidden', 'true')
+  runs[0].span.parentElement!.appendChild(cursor)
+  const paint = (k: number) => {
+    let at = runs[0].span
+    let frac = 0
+    for (const r of runs) {
+      const shown = Math.max(0, Math.min(r.len, k - r.start))
+      if (shown !== r.shown) {
+        r.shown = shown
+        // whitespace is invisible either way; only ink needs hiding
+        if (r.ink) r.span.style.clipPath = shown >= r.len ? '' : `inset(0 ${(1 - shown / r.len) * 100}% 0 0)`
+      }
+      // a newline span has no useful box to stand the cursor on
+      if (shown > 0 && !r.span.textContent!.includes('\n')) { at = r.span; frac = shown / r.len }
+    }
+    cursor.style.transform = `translate(${at.offsetLeft + at.offsetWidth * frac}px, ${at.offsetTop}px)`
+  }
+  paint(0)
+  const state = { k: 0 }
+  const finish = () => {
+    if (typing.get(node) !== finish) return
+    typing.delete(node)
+    anim.killTweensOf(state)
+    anim.killTweensOf(cursor)
+    for (const r of runs) r.span.style.clipPath = ''
+    cursor.remove()
+  }
+  typing.set(node, finish)
+  anim.to(state, {
+    k: total,
+    duration: per * total,
+    delay,
+    ease: 'none',
+    onUpdate: () => paint(Math.floor(state.k)),
+    onComplete: () => {
+      paint(total)
+      anim.to(cursor, { opacity: 0, duration: 0.3, delay: 0.6, ease: 'power2.out', onComplete: finish })
+    },
+  })
+}
+
+/** Finish the typewriter runs inside `scope` at once: all text shown, no cursor. */
+function settleTypeWriter(scope: HTMLElement) {
+  for (const [node, finish] of [...typing]) if (scope === node || scope.contains(node)) finish()
 }
 
 /** Re-parse inline svg elements so their CSS animations replay on entry. */
@@ -2021,7 +2113,9 @@ function morphMathSymbols(
   // is under way, makes the two motions one beat.
   const fresh = Array.from(to.querySelectorAll<HTMLElement>('[data-sym]'))
     .filter((s) => !fromAt.has(s.dataset.sym!))
-  fresh.forEach((s, i) => {
+  // A typewriter element types its new text instead, once the travel is under way.
+  if (b.fx?.typeWriter) runTypeWriter(to, fresh, MORPH_DURATION * 0.4)
+  else fresh.forEach((s, i) => {
     anim.fromTo(s, { opacity: 0 }, {
       opacity: 1,
       duration: 0.3,
@@ -2168,6 +2262,11 @@ function runMorph(
     if (fromEls.has(id)) continue
     const m = toModel.get(id)
     if (m?.showOnHover && m.showOnHover !== activeSet) continue // hover-revealed, stays hidden
+    if (m?.fx?.typeWriter) {
+      // new to this slide: it types in, all of it — and rises only if it asked to
+      runTypeWriter(n, [...n.querySelectorAll<HTMLElement>('[data-sym]')], MORPH_DURATION * 0.4)
+      if (!m.fx.enter) continue
+    }
     entering.push([n, m?.opacity ?? 1])
   }
   if (entering.length) {
